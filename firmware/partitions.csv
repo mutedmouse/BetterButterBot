@@ -1,0 +1,10 @@
+# Espressif ESP32 Partition Table
+# Name,  Type, SubType, Offset,  Size
+nvs, data, nvs, , 0x6000
+factory, app, factory, , 8880k
+model, data, spiffs, , 2990k
+storage,  data, spiffs, , 212k
+human_face_det,   data,  spiffs,      ,  200K,
+human_face_feat,   data,  spiffs,      , 1265K,
+objdet, 0x40, 0x0, , 2660k
+wakeword, 0x40, 0x1, , 64k

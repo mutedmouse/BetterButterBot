@@ -1,0 +1,52 @@
+menu "ButterBot VoiceLink"
+
+	config BB_VOICELINK_ENABLE
+		bool "Stream voice commands to a LAN Whisper gateway"
+		default y
+		help
+			Joins the home Wi-Fi network and sends listen audio to bb-voice-gateway.
+			Falls back to on-device MultiNet recognition when the gateway is unreachable.
+
+	config BB_VOICELINK_SSID
+		string "Home Wi-Fi SSID"
+		default ""
+		help
+			2.4 GHz network the robot joins (DHCP). Empty = LAN voice off (on-device recognition only).
+			Set it with tools/configure_robot.py rather than editing sdkconfig by hand.
+
+	config BB_VOICELINK_PASSWORD
+		string "Home Wi-Fi password"
+		default ""
+
+	config BB_VOICELINK_URL
+		string "Gateway WebSocket URL"
+		default "ws://SET-GATEWAY-IP:8765/bb"
+		help
+			ws://<IP of the machine running bb-voice-gateway>:8765/bb. The placeholder never connects.
+
+	config BB_WAKEWORD_ENABLE
+		bool "Always-on \"butterbot\" wake word"
+		default y
+		help
+			Runs a microWakeWord model from the "wakeword" flash partition. Stays off if the
+			partition holds no model.
+
+	config BB_WAKEWORD_CUTOFF
+		int "Wake word probability cutoff (0-255)"
+		range 1 255
+		default 247
+
+	config BB_WAKEWORD_WINDOW
+		int "Wake word sliding window (model runs averaged)"
+		range 1 16
+		default 5
+
+	config BB_BLE_QUIET_ON_LAN
+		bool "Pause BLE advertising while LAN voice is connected"
+		default y
+		help
+			Wi-Fi and BLE share one radio. With advertising paused, Wi-Fi gets it to itself while the
+			gateway link is up. Connected BLE peers stay connected; the phone app / RC controller can
+			only discover the robot while LAN voice is down.
+
+endmenu

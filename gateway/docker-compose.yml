@@ -1,0 +1,38 @@
+# ButterBot voice gateway, built from this folder. (No source needed: use docker/docker-compose.yml.)
+# Run `python setup.py` first (writes config.yaml and secret.env), then:
+#   docker compose --profile cpu up -d --build     # CPU only
+#   docker compose --profile gpu up -d --build     # NVIDIA GPU
+# Other commands need the same --profile (logs, restart, down), or put COMPOSE_PROFILES=cpu (or gpu)
+# in a .env file next to this one once and drop the flag: docker compose logs -f / restart / down.
+x-gateway: &gateway
+  restart: unless-stopped
+  ports:
+    - "8765:8765"
+    - "8766:8766"     # camera viewer
+  env_file:
+    - path: secret.env        # API keys + calendar link (written by setup.py); optional for fully local setups.
+                              # After editing it run `up -d` again - `restart` keeps the old values.
+      required: false
+  volumes:
+    - ./data:/data            # model cache, utterance log, timers/alarms/reminders database
+    - ./config.yaml:/app/config.yaml:ro
+
+services:
+  gateway-cpu:
+    <<: *gateway
+    profiles: ["cpu"]
+    build: {context: ., dockerfile: Dockerfile, args: {VERSION: "${BB_VERSION:-local}"}}
+    image: bb-voice-gateway:cpu
+
+  gateway-gpu:
+    <<: *gateway
+    profiles: ["gpu"]
+    build: {context: ., dockerfile: Dockerfile.gpu, args: {VERSION: "${BB_VERSION:-local}"}}
+    image: bb-voice-gateway:gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

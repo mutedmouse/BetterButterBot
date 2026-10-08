@@ -1,0 +1,121 @@
+# ButterBot voice gateway configuration - every option, with the defaults the code uses.
+# Copy to config.yaml next to gateway.py (setup.py writes a minimal one for you) and edit.
+# Restart the gateway after changes. Full guide: docs/GATEWAY-CONFIG.md and docs/LLM-PROVIDERS.md.
+#
+# Secrets never go in this file. Each backend names the environment variable that holds its key
+# (api_key_env); put the values in secret.env next to this file (Docker and the installers load it):
+#   GEMINI_API_KEY=...
+#   ANTHROPIC_API_KEY=...
+
+timezone: UTC               # IANA name, e.g. America/New_York or Europe/Berlin (setup.py detects yours);
+                            # used for alarms, reminders, the calendar and "what time is it".
+                            # Without it: $BB_TZ, then UTC.
+
+calendar:                   # optional: "what does my day look like?" + meeting reminders
+  provider: ics                  # ics (secret iCal link, read-only) | google (OAuth sign-in, read/write)
+  ics_url_env: BB_CALENDAR_ICS   # env var (in secret.env) holding one or more iCal links,
+                                 # separated by spaces or commas
+  # google only:
+  # token_file: google_token.json  # in the data directory, made by calendar_auth.py
+  # calendars: selected            # selected (ticked in Google Calendar) | primary | [list of calendar ids]
+  # write_calendar: primary        # where "add an event" goes (needs calendar_auth.py --write)
+  meeting_reminders: true        # spoken reminders before timed events (voice can turn them off)
+  remind_minutes_before: [15, 5] # one reminder per entry (1-120); the last says "Time to wrap up".
+                                 # A voice change ("remind me 10 and 2 minutes before") is saved
+                                 # in data/log.sqlite3 and overrides this from then on.
+
+conversation:
+  followup_seconds: 3.0     # after an answer, wait this long for a follow-up question (0 = no follow-ups)
+
+endpoint:
+  detector: silero          # silero: neural speech detector - ignores fans, music, clatter (default)
+                            # energy: loudness only (fallback; also used if Silero can't load)
+
+# ---------------------------------------------------------------- speech to text
+stt:
+  provider: faster-whisper   # faster-whisper | openai | whispercpp | deepgram | mlx (Apple Silicon)
+
+  faster-whisper:            # local Whisper; no network, no key
+    model: auto              # auto: large-v3-turbo on an NVIDIA GPU, small.en on a CPU with AVX2,
+                             #   base.en without AVX2. Or name one: tiny.en | base.en | small.en |
+                             #   medium.en | large-v3-turbo. (AVX2 is detected on Linux only; on
+                             #   Windows/macOS auto assumes AVX2 - pick base.en for very old CPUs.)
+    device: auto             # auto | cuda | cpu
+    compute_type: auto       # auto: int8_float16 on CUDA, int8 on CPU
+    threads: auto            # auto: CPU cores, max 8
+    beam: 1                  # beam search width; 1 is fastest
+    language: en
+    hotwords: true           # bias decoding toward ButterBot's command words
+    # download_root: /path   # where models are cached (default: Hugging Face cache, $HF_HOME)
+
+  openai:                    # any OpenAI-compatible POST /audio/transcriptions
+    base_url: https://api.groq.com/openai/v1   # Groq: whisper-large-v3-turbo, typically < 0.5 s
+    model: whisper-large-v3-turbo
+    api_key_env: GROQ_API_KEY                  # default if omitted: BB_STT_API_KEY
+    # language: en
+    # hotwords: true         # sent as the transcription prompt
+    # timeout: 15            # seconds
+    # OpenAI:   base_url https://api.openai.com/v1, model gpt-4o-mini-transcribe, api_key_env OPENAI_API_KEY
+    # Speaches / faster-whisper-server / LocalAI / vLLM: base_url http://<host>:<port>/v1, no key needed
+
+  whispercpp:                # whisper.cpp `server` binary (POST /inference, English)
+    url: http://127.0.0.1:8080
+    # hotwords: true
+    # timeout: 15
+
+  deepgram:                  # Deepgram hosted (English)
+    model: nova-3
+    api_key_env: DEEPGRAM_API_KEY
+    # timeout: 15
+
+  mlx:                       # Apple Silicon GPU, native install only (not Docker)
+    model: mlx-community/whisper-large-v3-turbo
+    # language: en
+    # hotwords: true
+
+# ---------------------------------------------------------------- answers (LLM)
+# Used for anything that isn't one of ButterBot's built-in commands. "none" = commands only.
+llm:
+  provider: openai           # openai (any OpenAI-compatible server) | anthropic | none
+  # persona: "You are ButterBot, ..."   # replaces the built-in personality prompt (tool instructions
+  #                                      # and the current date/time are still added after it)
+
+  openai:
+    preset: gemini           # fills base_url + key variable: gemini | openrouter | openai | groq |
+                             #   ollama | lmstudio | vllm | hermes   (or set base_url yourself)
+    model: gemini-flash-lite-latest
+    api_key_env: GEMINI_API_KEY   # overrides the preset's key variable
+    # base_url: https://...       # overrides the preset's URL
+    # reasoning_effort: low       # only sent if set; for reasoning models that accept it
+    # max_tokens: 300
+    # timeout: 10                 # seconds
+    # hedge_after: 0              # >0: resend a request that hasn't answered after N seconds and use
+    #                             #   whichever answers first (paid/self-hosted servers; not free tiers)
+    # headers: {HTTP-Referer: "https://example.com", X-Title: "ButterBot"}   # extra HTTP headers
+    #
+    # Preset             base_url                                                 default key variable
+    # gemini       https://generativelanguage.googleapis.com/v1beta/openai           GEMINI_API_KEY
+    # openrouter   https://openrouter.ai/api/v1                                      OPENROUTER_API_KEY
+    # openai       https://api.openai.com/v1                                         OPENAI_API_KEY
+    # groq         https://api.groq.com/openai/v1                                    GROQ_API_KEY
+    # ollama       http://127.0.0.1:11434/v1                                         (none)
+    # lmstudio     http://127.0.0.1:1234/v1                                          (none)
+    # vllm         http://127.0.0.1:8000/v1                                          VLLM_API_KEY (only if vllm --api-key)
+    # hermes       http://127.0.0.1:8642/v1   (Hermes Agent API server)              API_SERVER_KEY
+    # Inside Docker, 127.0.0.1 is the container: point base_url at the server's LAN IP instead.
+
+  anthropic:                 # Claude via the official Anthropic SDK
+    model: claude-opus-5-5   # or claude-sonnet-5-5 / claude-haiku-4-5 for lower latency
+    effort: low              # low | medium | high | xhigh | max (not sent for claude-haiku-4-5)
+    fallbacks: true          # server-side fallback model for declined requests (Fable/Opus/Sonnet 5.x)
+    api_key_env: ANTHROPIC_API_KEY
+    # max_tokens: 2048
+    # timeout: 15
+
+# Camera viewer: a sign-in page on the LAN for the robot's live camera (it only streams after
+# "Butterbot, start the camera stream" and keeps streaming until "stop the camera").
+# Create an account first:  python camera.py adduser <name>   (Docker: docker compose exec <service> python camera.py adduser <name>)
+# camera:
+#   port: 8766               # http://<gateway-ip>:8766/
+#   tls_cert: ""             # set both to serve HTTPS (plain HTTP sends the password unencrypted on your network)
+#   tls_key: ""

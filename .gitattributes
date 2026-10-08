@@ -1,0 +1,20 @@
+# Store text with LF in the repository and let git pick line endings on checkout...
+* text=auto
+
+# ...except files that run on Linux/macOS or inside Docker, which must stay LF even on a Windows clone.
+*.sh               text eol=lf
+*.py               text eol=lf
+Dockerfile*        text eol=lf
+*.yml              text eol=lf
+*.yaml             text eol=lf
+.env.example       text eol=lf
+gateway/VERSION    text eol=lf
+*.ps1              text eol=crlf
+
+# Binary assets
+*.aac     binary
+*.tflite  binary
+*.espdl   binary
+*.pdf     binary
+*.png     binary
+*.jpg     binary

@@ -1,0 +1,9 @@
+.venv
+data
+robotwav
+testwav
+__pycache__
+secret.env
+admin.env
+config.yaml
+*.log

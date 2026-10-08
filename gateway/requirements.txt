@@ -1,0 +1,10 @@
+faster-whisper>=1.1
+websockets>=13
+rapidfuzz>=3
+numpy
+pyyaml
+httpx
+icalendar>=6
+recurring-ical-events>=3   # expands repeating calendar events
+anthropic>=1.0   # only used when llm.provider is anthropic
+mlx-whisper; sys_platform == "darwin" and platform_machine == "arm64"   # Apple GPU STT (provider: mlx)

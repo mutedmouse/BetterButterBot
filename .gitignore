@@ -1,0 +1,42 @@
+# ---------- secrets & personal data (see SECURITY.md) ----------
+secret.env
+*.env
+!*.env.example
+gateway/secrets/
+gateway/data/
+gateway/config.yaml
+google_token.json
+client_secret*.json
+admin.env
+
+# firmware config holds your Wi-Fi password; sdkconfig.defaults is the shareable one
+firmware/sdkconfig
+firmware/sdkconfig.old
+# flash images (built ones contain your Wi-Fi password; backups contain your robot's factory image)
+*.bin
+!firmware/managed_components/**/*.bin
+*.elf
+*.map
+
+# ---------- build output & downloads ----------
+firmware/build/
+firmware/build-*/
+firmware/managed_components/
+firmware/.cache/
+*_preview.wav
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# ---------- editors / OS ----------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

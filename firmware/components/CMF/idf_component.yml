@@ -1,0 +1,34 @@
+dependencies:
+  LovyanGFX:
+    git: https://github.com/lovyan03/LovyanGFX.git
+    version: 2e0dc974a9b6521bf155afb53a9a92a623a60803 #TODO - set this to an actual release, when v1.2.9 (?) comes out
+    matches:
+      - if: "$CONFIG{CMF_LGFX} == True"
+
+  #TODO - uncomment conditional dependcy rules after 5306cdd makes it into an ESP-IDF release (possibly v5.5.2)
+
+  lvgl/lvgl:
+    version: "9.2.0"
+    matches:
+      - if: "$CONFIG{CMF_LVGL} == True"
+
+  espressif/esp32-camera:
+    version: "2.1.3"
+    matches:
+      - if: "$CONFIG{CMF_CAMERA} == True"
+
+  LIS2DW12:
+    git: https://github.com/CircuitMess/lis2dw12-pid.git
+    version: master
+
+  heatshrink:
+    git: https://github.com/laride/heatshrink.git
+    version: "esp/master"
+
+  idf:
+    version: '>=5.5.3' # ESP-IDF v5.5.3 fixed a bug with conditional dependencies, so this is necessary to work
+    
+description: CircuitMess Framework
+repository: git://github.com/CircuitMess/CMF.git
+url: https://github.com/CircuitMess/CMF
+version: 1.0.0

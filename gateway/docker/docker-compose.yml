@@ -1,0 +1,50 @@
+# BetterButterBot voice gateway - deploy from a prebuilt image. No source checkout or Python needed.
+#
+#   1. Put this file and .env.example (renamed .env) in an empty folder. NVIDIA GPU: COMPOSE_PROFILES=gpu in .env
+#   2. docker compose run --rm setup        # wizard: writes config.yaml, secret.env, data/
+#   3. docker compose up -d
+#
+# Logs: docker compose logs -f      Update: docker compose pull && docker compose up -d
+# Image and cpu/gpu choice: .env (registry or an offline-loaded image). See README.md.
+name: bb-voice-gateway
+
+x-gateway: &gateway
+  restart: unless-stopped
+  ports:
+    - "8765:8765"
+    - "8766:8766"     # camera viewer
+  env_file:
+    - path: secret.env          # API keys, calendar link, admin token. After editing: `up -d` again
+      required: false           # (`restart` keeps the old values)
+  volumes:
+    - ./data:/data              # model cache, transcripts, timers/alarms/reminders, calendar token
+    - ./config.yaml:/app/config.yaml:ro
+
+services:
+  setup:                        # one-off: docker compose run --rm setup
+    image: ${BB_IMAGE:-bb-voice-gateway}:${BB_CPU_TAG:-cpu}
+    profiles: ["setup"]
+    entrypoint: ["python", "setup.py", "--dir", "/work"]
+    environment:
+      BB_DOCKER_BUNDLE: "1"     # setup.py prints the commands for this bundle
+    volumes:
+      - ./:/work
+    stdin_open: true
+    tty: true
+
+  gateway-cpu:
+    <<: *gateway
+    image: ${BB_IMAGE:-bb-voice-gateway}:${BB_CPU_TAG:-cpu}
+    profiles: ["cpu"]
+
+  gateway-gpu:
+    <<: *gateway
+    image: ${BB_IMAGE:-bb-voice-gateway}:${BB_GPU_TAG:-gpu}
+    profiles: ["gpu"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

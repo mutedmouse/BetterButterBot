@@ -1,0 +1,358 @@
+menu "CMF"
+
+config CMF_LVGL
+    bool "Include LVGL extension"
+    default "n"
+
+config CMF_LGFX
+    bool "Include LGFX extension"
+    default "n"
+
+config CMF_AUDIO
+    bool "Include audio extension"
+    default "n"
+
+config CMF_CAMERA
+    bool "Include camera extension"
+    default "n"
+
+config CMF_WIFI
+    bool "Include WiFi extension"
+    default "n"
+
+    menu "WiFi features"
+        depends on CMF_WIFI
+
+    config CMF_WIFI_STA_SUPPORT
+        bool "WiFi station support"
+        default "n"
+
+    config CMF_WIFI_AP_SUPPORT
+        depends on ESP_WIFI_SOFTAP_SUPPORT
+        bool "WiFi access point support"
+        default "n"
+
+    endmenu
+
+config CMF_TOUCH
+    bool "Include touch input extension"
+    default "n"
+
+config CMF_MCPWM
+    bool "Include MCPWM output extension"
+    default "n"
+
+config CMF_GARBAGE_COLLECTOR_INTERVAL
+    int "Garbage collection interval"
+    range 0 4294967295
+    default 120000
+
+menu "Event System"
+
+    config CMF_EVENT_DEFAULT_QUEUE_SIZE
+        int "The default number of elements in each event queue."
+        range 1 128
+        default 8
+        help
+            The number of queue elements allocated per each event.
+            The queue is able to resize, this is only the initial size when first initialized.
+            Increasing this value reduces performance strain in high frequency events, but increases memory usage per event.
+
+endmenu
+
+menu "I2C settings"
+
+    config CMF_I2C_default_timeout
+        int "Number of ticks for timeout in I2C scan/probe operations (Default)"
+        range 1 1000
+        default 5
+        help
+            Some hardware implementations require larger timeout windows.
+            Increase this value in case of I2C probe errors, while 5 ticks should be enough for most boards.
+            Value should be lowest-possible to keep blocking times during init reasonably short.
+endmenu
+
+config CMF_MODULES
+    bool "Enable Modules service"
+    default "n"
+
+    menu "Supported modules"
+        depends on CMF_MODULES
+
+    menuconfig CMF_MODULES_RM
+        bool "Rick and Morty modules"
+        default "n"
+        help
+            Enable detection and support for the Rick and Morty module set.
+            When enabled, the ModuleService will read the sub-address pins
+            and probe I2C addresses required to detect Rick and Morty modules.
+
+    if CMF_MODULES_RM
+        config RM_TempHum
+            bool "RM_TempHum module"
+            default "n"
+        config RM_LED
+            bool "RM_LED module"
+            default "n"
+        config RM_Motion
+            bool "RM_Motion module"
+            default "n"
+        config RM_CO2
+            bool "RM_CO2 module"
+            default "n"
+        config RM_IR
+            bool "RM_IR module"
+            default "n"
+        config RM_PerfBoard
+            bool "RM_PerfBoard module"
+            default "n"
+    endif
+
+    menuconfig CMF_MODULES_ROVER_I2C
+        bool "Rover I2C modules"
+        default "n"
+        help
+            Enable detection and support for the Rover I2C module set.
+            When enabled, the ModuleService will probe the I2C bus for
+            Rover I2C modules during detection.
+
+    if CMF_MODULES_ROVER_I2C
+        # No individual Rover I2C modules are defined yet.
+    endif
+
+    menuconfig CMF_MODULES_TOKEN
+        bool "Wacky robot tokens"
+        default "n"
+        help
+            Enable detection and support for the Wacky robot tokens
+            (Bit / STEM adventure tokens) module set. When enabled, the
+            ModuleService will read all six sub-address pins to determine
+            the token address during detection.
+
+    if CMF_MODULES_TOKEN
+        # No individual Wacky robot token modules are defined yet.
+    endif
+
+    endmenu
+
+menu "Thread properties"
+
+    menu "Threaded"
+
+        config CMF_THREADED_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 0
+        config CMF_THREADED_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 4096
+        config CMF_THREADED_PRIORITY
+            int "Priority"
+            range 0 25
+            default 5
+        config CMF_THREADED_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+
+    endmenu
+
+    menu "AsyncEntity"
+
+        config CMF_ASYNCENTITY_TICK_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 0
+        config CMF_ASYNCENTITY_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 4096
+        config CMF_ASYNCENTITY_THREAD_PRIORITY
+            int "Priority"
+            range 0 25
+            default 5
+        config CMF_ASYNCENTITY_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+
+    endmenu
+
+    menu "Application"
+
+        config CMF_APPLICATION_TICK_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 10000
+        config CMF_APPLICATION_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 4096
+        config CMF_APPLICATION_THREAD_PRIORITY
+            int "Priority"
+            range 0 25
+            default 5
+        config CMF_APPLICATION_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+
+    endmenu
+
+    menu "LED Service"
+
+        config CMF_LED_TICK_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 4294967295
+        config CMF_LED_MINIMAL_TICK_INTERVAL
+            int "Minimal tick interval"
+            range 0 4294967295
+            default 10
+        config CMF_LED_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 3072
+        config CMF_LED_THREAD_PRIORITY
+            int "Priority"
+            range 0 25
+            default 4
+        config CMF_LED_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+
+    endmenu
+
+    menu "ButtonInput"
+
+        config CMF_BUTTONINPUT_TICK_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 5
+        config CMF_BUTTONINPUT_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 4096
+        config CMF_BUTTONINPUT_THREAD_PRIORITY
+            int "Priority"
+            range 0 25
+            default 10
+        config CMF_BUTTONINPUT_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+
+    endmenu
+
+    menu "Audio"
+
+        config CMF_AUDIO_TICK_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 0
+        config CMF_AUDIO_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 4096
+        config CMF_AUDIO_THREAD_PRIORITY
+            int "Priority"
+            range 0 25
+            default 7
+        config CMF_AUDIO_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+
+    endmenu
+
+    menu "StateMachine"
+
+        config CMF_STATEMACHINE_TICK_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 0
+        config CMF_STATEMACHINE_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 8192
+        config CMF_STATEMACHINE_THREAD_PRIORITY
+            int "Priority"
+            range 0 25
+            default 5
+        config CMF_STATEMACHINE_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+
+    endmenu
+
+    menu "ModuleService"
+        depends on CMF_MODULES
+
+        config CMF_MODULESERVICE_TICK_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 15
+        config CMF_MODULESERVICE_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 4096
+        config CMF_MODULESERVICE_THREAD_PRIORITY
+            int "Priority"
+            range 0 25
+            default 5
+        config CMF_MODULESERVICE_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+        config CMF_MODULESERVICE_NUM_BUSES
+            int "Number of buses"
+            range 1 16
+            default 1
+
+    endmenu
+
+    menu "EventScanner"
+
+        config CMF_EVENTSCANNER_TICK_INTERVAL
+            int "Tick interval"
+            range 0 4294967295
+            default 0
+        config CMF_EVENTSCANNER_STACK_SIZE
+            int "Stack size"
+            range 2048 4294967295
+            default 4096
+        config CMF_EVENTSCANNER_THREAD_PRIORITY
+            int "Priority"
+            range 0 25
+            default 20
+        config CMF_EVENTSCANNER_CPU_CORE
+            int "CPU core"
+            range -1 1
+            default -1
+            help
+                Pin the thread to a CPU core, if -1, it is not pinned but assigned automatically to a free CPU core.
+
+    endmenu
+
+endmenu
+
+endmenu
