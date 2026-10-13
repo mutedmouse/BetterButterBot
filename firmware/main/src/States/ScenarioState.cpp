@@ -7,10 +7,16 @@
 #include "ListenState.h"
 #include "RCState.h"
 #include "Services/ScenarioRoutineService.h"
+#include "Services/Portal.h"
 
 DEFINE_LOG(ScenarioState)
 
 ScenarioState::ScenarioState(BBStateMachine* sm) : State(sm){
+    // Scenarios are what the robot says and does (replies, typed chat, alarms): busy for the portal.
+    if(Portal* portal = Portal::get()){
+        portal->setSpeaking(true);
+    }
+
     const Application* app = ApplicationStatics::getApplication();
     if(!ServiceLocator::ScenarioRoutineServiceInstance){
         CMF_LOG(ScenarioState, LogLevel::Error, "ScenarioRoutineService missing in constructor");
@@ -27,6 +33,10 @@ ScenarioState::ScenarioState(BBStateMachine* sm) : State(sm){
 }
 
 ScenarioState::~ScenarioState(){
+    if(Portal* portal = Portal::get()){
+        portal->setSpeaking(false);
+    }
+
     if(!ServiceLocator::ScenarioRoutineServiceInstance){
         CMF_LOG(ScenarioState, LogLevel::Warning, "ScenarioRoutineService missing in destructor");
         return;

@@ -1,9 +1,10 @@
-"""Camera viewer: ButterBot sends JPEG frames over its gateway socket while its camera stream is on;
-this serves them to signed-in browsers on the LAN.
+"""Robot portal: ButterBot sends JPEG frames over its gateway socket while its camera stream is on;
+this serves them to signed-in browsers on the LAN, with controls (camera on/off, chat; see portal_page.py).
 
-    http://<gateway>:8766/              sign-in page, then the live view
+    http://<gateway>:8766/              sign-in page, then the portal
     http://<gateway>:8766/stream        MJPEG (needs a signed-in session)
     http://<gateway>:8766/snapshot.jpg  latest frame (needs a signed-in session)
+    ws://<gateway>:8766/ws              portal controls (signed-in session, same-origin pages only)
 
 Accounts live in <data>/camera_users.json as salted scrypt hashes. Create one on the gateway machine
 (the password is asked for, never passed on the command line):
@@ -12,8 +13,9 @@ Accounts live in <data>/camera_users.json as salted scrypt hashes. Create one on
     python camera.py deluser <name>
     python camera.py list
 
-The robot only streams after being asked by voice ("start the camera stream"), says so, and keeps
-streaming until asked to stop ("stop the camera"), including across reboots. Plain HTTP sends the password unencrypted on your network;
+The robot only streams after being asked (the portal's CS switch, or by voice: "start the camera
+stream") and keeps streaming until asked to stop. It is always off after the robot or gateway restarts,
+or when the robot's connection drops. Plain HTTP sends the password unencrypted on your network;
 set camera.tls_cert / camera.tls_key in config.yaml to serve HTTPS instead.
 """
 import argparse
@@ -32,6 +34,12 @@ from collections import defaultdict, deque
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from websockets.exceptions import InvalidState, ProtocolError
+from websockets.frames import Opcode
+from websockets.server import ServerProtocol
+
+import portal_page
+
 log = logging.getLogger("camera")
 
 USERS_FILE = "camera_users.json"
@@ -42,6 +50,9 @@ LOCKOUT_S = 300                # ... for this long
 OFF_GRACE_S = 300              # a viewer stays connected this long after the stream turns off or pauses
                                # (find me / face recognition pause it while they use the camera)
 MIN_PASSWORD = 8
+CHAT_KEEP = 200                # chat lines kept per signed-in session (cleared at sign-out / expiry)
+WS_IDLE_S = 75                 # the page pings every 25 s; a silent socket this long is dead
+WS_MAX_MESSAGE = 8192
 SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
 COOKIE = "bbcam"
 
@@ -64,16 +75,9 @@ NO_USERS_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Butte
 <body><p style="margin-top:20vh">No camera accounts yet. On the gateway machine run<br><br>
 <code>python camera.py adduser &lt;name&gt;</code></p></body></html>"""
 
-VIEW_PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ButterBot camera</title><style>{style}</style></head><body>
-<div class="bar"><span>ButterBot camera &middot; {user}</span>
-<form method="post" action="/logout"><button type="submit">Sign out</button></form></div>
-<p>{status} Reload if the picture stops.</p>
-<img src="/stream" alt="Camera stream (off)"></body></html>"""
-
 SECURITY_HEADERS = ("X-Frame-Options: DENY\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n"
-                    "Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; "
-                    "form-action 'self'; frame-ancestors 'none'\r\n")
+                    "Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'self' 'unsafe-inline'; "
+                    "script-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'\r\n")
 
 
 # ---- accounts -------------------------------------------------------------------------------
@@ -125,12 +129,43 @@ class Users:
 
 # ---- viewer server --------------------------------------------------------------------------
 
+class PortalConn:
+    """One portal page's WebSocket (framing by the websockets library's sans-I/O protocol)."""
+
+    def __init__(self, proto: ServerProtocol, writer: asyncio.StreamWriter, sid: str, user: str):
+        self.proto = proto
+        self.writer = writer
+        self.sid = sid
+        self.user = user
+        self.lock = asyncio.Lock()
+        self.last_say = 0.0
+
+    async def flush(self):
+        for chunk in self.proto.data_to_send():
+            if chunk:
+                self.writer.write(chunk)
+            else:                       # the protocol wants the TCP connection half-closed
+                self.writer.close()
+        await self.writer.drain()
+
+    async def send(self, message: dict):
+        async with self.lock:
+            try:
+                self.proto.send_text(json.dumps(message).encode())
+                await self.flush()
+            except (InvalidState, ConnectionError, RuntimeError):
+                pass                    # closing; the reader loop cleans up
+
+
 class CameraRelay:
     def __init__(self, data_dir: Path, port: int = 8766, host: str = "0.0.0.0",
-                 tls_cert: str = "", tls_key: str = ""):
+                 tls_cert: str = "", tls_key: str = "", trusted_proxies=("127.0.0.1", "::1")):
         self.users = Users(Path(data_dir) / USERS_FILE)
         self.port = port
         self.host = host
+        # Reverse proxies on this machine whose X-Forwarded-For / X-Forwarded-Proto are believed. Everyone
+        # else is judged by their own address, so those headers can't be spoofed.
+        self.trusted_proxies = set(trusted_proxies or ())
         self.tls = None
         if tls_cert and tls_key:
             self.tls = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
@@ -146,6 +181,12 @@ class CameraRelay:
         self.cond = asyncio.Condition()
         self.viewers = 0
         self.server = None
+        self.wanted = False            # the stream was asked for (paused counts as wanted)
+        self.conns: set[PortalConn] = set()
+        self.chats: dict[str, deque] = {}   # session id -> chat lines
+        # The gateway: portal_status(conn) -> dict, async portal_message(conn, msg), async portal_closed(conn),
+        # async portal_signed_out(sid).
+        self.portal = None
 
     @property
     def enabled(self) -> bool:
@@ -174,18 +215,63 @@ class CameraRelay:
             if not on:
                 self.off_since = time.time()
             self.cond.notify_all()
+        await self.broadcast_status()
+
+    # -- portal pages --
+
+    async def broadcast(self, message: dict):
+        for conn in list(self.conns):
+            await conn.send(message)
+
+    async def broadcast_status(self):
+        for conn in list(self.conns):   # per page: "driver_is_you" differs
+            await conn.send(self.status(conn))
+
+    def status(self, conn: "PortalConn | None" = None) -> dict:
+        s = {"type": "status", "camera": {"wanted": self.wanted, "on": self.on, "mode": self.mode}}
+        if self.portal is not None:
+            s.update(self.portal.portal_status(conn))
+        return s
+
+    async def chat(self, sid: str, who: str, text: str):
+        """Add a line to one session's chat ("you", "heard" or "note") and show it on its pages."""
+        line = {"who": who, "text": text, "ts": int(time.time())}
+        self.chats.setdefault(sid, deque(maxlen=CHAT_KEEP)).append(line)
+        for conn in list(self.conns):
+            if conn.sid == sid:
+                await conn.send({"type": "chat", **line})
+
+    def session_valid(self, sid: str) -> bool:
+        user, expires = self.sessions.get(sid, (None, 0))
+        return bool(user) and time.time() < expires and user in self.users.load()
+
+    async def end_session(self, sid: str):
+        if self.portal is not None and sid in self.sessions:
+            await self.portal.portal_signed_out(sid)   # e.g. the driver signing out hands back control
+        self.sessions.pop(sid, None)
+        self.chats.pop(sid, None)
+        for conn in list(self.conns):
+            if conn.sid == sid:
+                try:
+                    conn.writer.close()
+                except Exception:
+                    pass
 
     # -- sessions and sign-in --
 
-    def session_user(self, headers: dict) -> str | None:
+    def session_id(self, headers: dict) -> str | None:
         for part in headers.get("cookie", "").split(";"):
             name, _, value = part.strip().partition("=")
             if name == COOKIE and value:
-                user, expires = self.sessions.get(value, (None, 0))
-                if user and time.time() < expires and user in self.users.load():
-                    return user
+                if self.session_valid(value):
+                    return value
                 self.sessions.pop(value, None)
+                self.chats.pop(value, None)
         return None
+
+    def session_user(self, headers: dict) -> str | None:
+        sid = self.session_id(headers)
+        return self.sessions[sid][0] if sid else None
 
     def locked_out(self, addr: str) -> bool:
         return self.locked.get(addr, 0) > time.time()
@@ -201,9 +287,19 @@ class CameraRelay:
             q.clear()
             log.warning("camera: %s locked out for %d s after %d failed sign-ins", addr, LOCKOUT_S, MAX_FAILS)
 
-    def cookie(self, value: str, max_age: int) -> str:
-        secure = "; Secure" if self.tls else ""
+    def cookie(self, value: str, max_age: int, https: bool = False) -> str:
+        secure = "; Secure" if self.tls or https else ""
         return f"Set-Cookie: {COOKIE}={value}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Strict{secure}\r\n"
+
+    def client(self, peer: str, headers: dict) -> tuple[str, bool]:
+        """(the real client address, reached over https) - through a trusted proxy, from its headers.
+        Behind a proxy every request comes from the proxy's address: sign-in lockouts must count the
+        real visitor, or one stranger's wrong passwords would lock everyone out."""
+        if peer in self.trusted_proxies:
+            real = headers.get("x-forwarded-for", "").split(",")[0].strip()
+            https = headers.get("x-forwarded-proto", "").lower() == "https"
+            return (real or peer), (https or bool(self.tls))
+        return peer, bool(self.tls)
 
     # -- HTTP --
 
@@ -224,16 +320,18 @@ class CameraRelay:
             if len(parts) < 2:
                 return await self.reply(writer, 400, "text/plain", b"Bad request\n")
             method, path = parts[0], urlsplit(parts[1]).path
-            user = self.session_user(headers)
+            addr, https = self.client(addr, headers)
+            sid = self.session_id(headers)
+            user = self.sessions[sid][0] if sid else None
 
             if method == "POST" and path == "/login":
-                return await self.login(reader, writer, headers, addr)
+                return await self.login(reader, writer, headers, addr, https)
             if method == "POST" and path == "/logout":
                 for part in headers.get("cookie", "").split(";"):
                     n, _, v = part.strip().partition("=")
                     if n == COOKIE:
-                        self.sessions.pop(v, None)
-                return await self.redirect(writer, "/", self.cookie("", 0))
+                        await self.end_session(v)
+                return await self.redirect(writer, "/", self.cookie("", 0, https))
             if method != "GET":
                 return await self.reply(writer, 405, "text/plain", b"Method not allowed\n")
             if path == "/":
@@ -242,10 +340,21 @@ class CameraRelay:
                                             NO_USERS_PAGE.format(style=STYLE).encode())
                 if user is None:
                     return await self.login_page(writer)
-                status = (f"Streaming at {html.escape(self.mode)} (shown at 640x480). Say <i>\"Butterbot, stop the camera\"</i> to end it."
-                          if self.on else 'The stream is off. Say <i>"Butterbot, start the camera stream"</i> to turn it on.')
                 return await self.reply(writer, 200, "text/html; charset=utf-8",
-                                        VIEW_PAGE.format(style=STYLE, user=html.escape(user), status=status).encode())
+                                        portal_page.PAGE.format(user=html.escape(user)).encode())
+            if path in ("/app.js", "/app.css"):
+                if user is None:
+                    return await self.reply(writer, 401, "text/plain", b"Sign in first\n")
+                if path == "/app.js":
+                    return await self.reply(writer, 200, "text/javascript; charset=utf-8", portal_page.SCRIPT.encode())
+                return await self.reply(writer, 200, "text/css; charset=utf-8", portal_page.STYLE.encode())
+            if path == "/ws":
+                if user is None:
+                    return await self.reply(writer, 401, "text/plain", b"Sign in first\n")
+                if not self.same_origin(headers):
+                    log.warning("camera: refused portal socket from %s (origin %r)", addr, headers.get("origin"))
+                    return await self.reply(writer, 403, "text/plain", b"Forbidden\n")
+                return await self.websocket(reader, writer, request, headers, sid, user, addr)
             if path in ("/stream", "/snapshot.jpg"):
                 if user is None:
                     return await self.reply(writer, 401, "text/plain", b"Sign in first\n")
@@ -268,7 +377,7 @@ class CameraRelay:
         await self.reply(writer, status, "text/html; charset=utf-8",
                          LOGIN_PAGE.format(style=STYLE, error=err).encode())
 
-    async def login(self, reader, writer, headers: dict, addr: str):
+    async def login(self, reader, writer, headers: dict, addr: str, https: bool = False):
         if self.locked_out(addr):
             return await self.login_page(writer, "Too many failed sign-ins. Try again in a few minutes.", 429)
         length = int(headers.get("content-length") or 0)
@@ -286,10 +395,11 @@ class CameraRelay:
         self.fails.pop(addr, None)
         now = time.time()
         self.sessions = {k: v for k, v in self.sessions.items() if v[1] > now}   # drop expired
+        self.chats = {k: v for k, v in self.chats.items() if k in self.sessions}
         sid = secrets.token_urlsafe(32)
         self.sessions[sid] = (name, now + SESSION_S)
         log.info("camera: %s signed in from %s", name, addr)
-        await self.redirect(writer, "/", self.cookie(sid, SESSION_S))
+        await self.redirect(writer, "/", self.cookie(sid, SESSION_S, https))
 
     async def redirect(self, writer, location: str, extra: str = ""):
         writer.write(f"HTTP/1.1 303 See Other\r\nLocation: {location}\r\n{extra}{SECURITY_HEADERS}"
@@ -297,8 +407,8 @@ class CameraRelay:
         await writer.drain()
 
     async def reply(self, writer, status: int, ctype: str, body: bytes):
-        reason = {200: "OK", 400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 405: "Method Not Allowed",
-                  429: "Too Many Requests", 503: "Service Unavailable"}[status]
+        reason = {200: "OK", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
+                  405: "Method Not Allowed", 429: "Too Many Requests", 503: "Service Unavailable"}[status]
         writer.write(f"HTTP/1.1 {status} {reason}\r\nContent-Type: {ctype}\r\nContent-Length: {len(body)}\r\n"
                      f"{SECURITY_HEADERS}Cache-Control: no-store\r\nConnection: close\r\n\r\n".encode() + body)
         await writer.drain()
@@ -332,6 +442,62 @@ class CameraRelay:
             gone.cancel()
             self.viewers -= 1
             log.info("camera: %s stopped watching (%d viewer(s))", user, self.viewers)
+
+    def same_origin(self, headers: dict) -> bool:
+        """Only this server's own page may open the portal socket (cookies alone don't stop other sites)."""
+        # Either scheme: behind an https reverse proxy the page is https while this server speaks plain http.
+        # What matters against other sites is the host name.
+        host = headers.get("host")
+        return bool(host) and headers.get("origin") in (f"http://{host}", f"https://{host}")
+
+    async def websocket(self, reader, writer, request_line: bytes, headers: dict, sid: str, user: str, addr: str):
+        proto = ServerProtocol(max_size=WS_MAX_MESSAGE)
+        # The request was already parsed here; hand the library an equivalent copy for the handshake.
+        raw = request_line + b"".join(f"{k}: {v}\r\n".encode("latin-1") for k, v in headers.items()) + b"\r\n"
+        proto.receive_data(raw)
+        events = proto.events_received()
+        if not events:
+            return await self.reply(writer, 400, "text/plain", b"Bad request\n")
+        response = proto.accept(events[0])
+        proto.send_response(response)
+        conn = PortalConn(proto, writer, sid, user)
+        await conn.flush()
+        if response.status_code != 101:
+            return
+        self.conns.add(conn)
+        log.info("camera: %s opened the portal from %s (%d open)", user, addr, len(self.conns))
+        try:
+            await conn.send({"type": "history", "lines": list(self.chats.get(sid, ()))})
+            await conn.send(self.status(conn))
+            while True:
+                data = await asyncio.wait_for(reader.read(4096), WS_IDLE_S)
+                if data:
+                    proto.receive_data(data)
+                else:
+                    proto.receive_eof()
+                for frame in proto.events_received():
+                    if frame.opcode != Opcode.TEXT:
+                        continue        # pings are answered by the protocol; close ends the loop below
+                    if not self.session_valid(sid):
+                        proto.send_close(1008, "signed out")
+                        break
+                    try:
+                        msg = json.loads(frame.data)
+                    except ValueError:
+                        continue
+                    if isinstance(msg, dict) and msg.get("type") != "ping" and self.portal is not None:
+                        await self.portal.portal_message(conn, msg)
+                async with conn.lock:
+                    await conn.flush()
+                if proto.close_expected() or not data:
+                    break
+        except (asyncio.TimeoutError, ConnectionError, ProtocolError, InvalidState):
+            pass
+        finally:
+            self.conns.discard(conn)
+            log.info("camera: %s closed the portal (%d open)", user, len(self.conns))
+            if self.portal is not None:
+                await self.portal.portal_closed(conn)
 
 
 # ---- account management CLI ----------------------------------------------------------------

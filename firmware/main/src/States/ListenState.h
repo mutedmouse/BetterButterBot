@@ -24,6 +24,9 @@ public:
     static void cancelFollowUp(){ followUpFlag = false; }
     static bool followUpPending(){ return followUpFlag; }
 
+    /** The portal's Listen button: the next ListenState streams once for the chat (text only, no command). */
+    static void requestChat(){ chatFlag = true; }
+
     void tick(float deltaTime) override;
     int64_t getDynamicTickInterval() const override;
 
@@ -41,7 +44,9 @@ private:
     std::atomic<bool> capturing{ false };
     inline static std::atomic<bool> followUpFlag{ false };
     inline static std::atomic<bool> quickIntroFlag{ false }; // next listen: just "Yes?" (re-wake)
+    inline static std::atomic<bool> chatFlag{ false };
     bool followUp = false;
+    bool chat = false;
     bool cloud = false;
     bool linkPaused = false;
     bool streaming = false;

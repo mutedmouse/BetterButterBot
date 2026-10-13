@@ -8,6 +8,7 @@
 #include "Log/Log.h"
 #include "BLE/ConMan.h"
 #include "CameraStream.h"
+#include "Portal.h"
 
 namespace {
 	// Wi-Fi gets the shared radio to itself while the gateway link is up (see BB_BLE_QUIET_ON_LAN).
@@ -137,12 +138,13 @@ bool VoiceLink::takePush(Push& out){
 	return true;
 }
 
-bool VoiceLink::beginUtterance(RingbufHandle_t buffer, bool followUp){
+bool VoiceLink::beginUtterance(RingbufHandle_t buffer, bool followUp, bool chat){
 	if(!ready()) return false;
 
 	Lock lock(streamMutex);
-	const char* start = followUp ? "{\"type\":\"start\",\"codec\":\"mulaw\",\"followup\":true}"
-								 : "{\"type\":\"start\",\"codec\":\"mulaw\"}";
+	const char* start = chat ? "{\"type\":\"start\",\"codec\":\"mulaw\",\"chat\":true}"
+					  : followUp ? "{\"type\":\"start\",\"codec\":\"mulaw\",\"followup\":true}"
+					  : "{\"type\":\"start\",\"codec\":\"mulaw\"}";
 	if(esp_websocket_client_send_text(ws, start, strlen(start), SendTimeout) < 0){
 		CMF_LOG(VoiceLink, LogLevel::Warning, "Failed to send start");
 		return false;
@@ -190,13 +192,18 @@ VoiceLink::FrameResult VoiceLink::sendFrame(const uint8_t* data, size_t len){
 	return FrameResult::Sent;
 }
 
-bool VoiceLink::sendText(const char* json){
+bool VoiceLink::sendText(const char* json, uint32_t timeoutMs){
 	Lock lock(streamMutex);
 	if(ws == nullptr || closing || !wsConnected) return false;
-	return esp_websocket_client_send_text(ws, json, strlen(json), SendTimeout) >= 0;
+	const TickType_t timeout = timeoutMs ? pdMS_TO_TICKS(timeoutMs) : SendTimeout;
+	return esp_websocket_client_send_text(ws, json, strlen(json), timeout) >= 0;
 }
 
 void VoiceLink::loop(){
+	if(portal != nullptr){
+		portal->tick();   // joystick, its watchdog and status reports (RC mode)
+	}
+
 	if(want == Want::Run && !stackOwned && nowMs() - lastStartAttempt >= RestartDelayMs){
 		lastStartAttempt = nowMs();
 		startStack();
@@ -419,8 +426,9 @@ void VoiceLink::onWsEvent(void* arg, esp_event_base_t base, int32_t id, void* da
 			// "songs": the alarm songs this firmware can sing; the gateway falls back to speech for others.
 			// "routines": routines the gateway may start with {"type":"routine","name":...}.
 			// "camera": the robot can stream its camera through the gateway ({"type":"camera"}).
-			char hello[192];
-			snprintf(hello, sizeof(hello), "{\"type\":\"hello\",\"vocab\":\"%08lx\",\"n\":%d,\"songs\":[\"alarm\",\"timer\"],\"routines\":[\"summon\"],\"camera\":true}",
+			// "portal": RC mode, the joystick, chat listening and status reports (Portal.h).
+			char hello[208];
+			snprintf(hello, sizeof(hello), "{\"type\":\"hello\",\"vocab\":\"%08lx\",\"n\":%d,\"songs\":[\"alarm\",\"timer\"],\"routines\":[\"summon\"],\"camera\":true,\"portal\":true}",
 					 (unsigned long) vocabHash(), (int) activations.size());
 			esp_websocket_client_send_text(self->ws, hello, strlen(hello), SendTimeout);
 			CMF_LOG(VoiceLink, LogLevel::Info, "Gateway connected");
@@ -459,6 +467,9 @@ bool VoiceLink::comingUp(uint32_t graceMs) const{
 
 void VoiceLink::onLinkDropped(){
 	bleQuiet(false);
+	if(portal != nullptr){
+		portal->linkLost();   // the robot always reconnects in VC, motors stopped
+	}
 	if(helloOk.exchange(false)){
 		lastReadyMs = nowMs(); // "ready until just now"
 		OnReady.broadcast(false);
@@ -476,6 +487,9 @@ void VoiceLink::handleMessage(const char* data, int len){
 			lastReadyMs = nowMs();
 			CMF_LOG(VoiceLink, LogLevel::Info, "Gateway ready");
 			bleQuiet(true);
+			if(portal != nullptr){
+				portal->linkReady();
+			}
 			if(!quietReconnect.exchange(false)){
 				OnReady.broadcast(true);
 			}
@@ -505,6 +519,27 @@ void VoiceLink::handleMessage(const char* data, int len){
 			}
 		}
 		CMF_LOG(VoiceLink, LogLevel::Info, "Camera stream %s by gateway", cJSON_IsTrue(on) ? "requested" : "stop requested");
+	}else if(cJSON_IsString(type) && strcmp(type->valuestring, "drive") == 0){
+		// The portal's joystick, ~10 a second while held (Portal stops the motors if they stop coming).
+		const cJSON* l = cJSON_GetObjectItem(root, "l");
+		const cJSON* r = cJSON_GetObjectItem(root, "r");
+		if(portal != nullptr && cJSON_IsNumber(l) && cJSON_IsNumber(r)){
+			portal->drive(l->valueint, r->valueint);
+		}
+	}else if(cJSON_IsString(type) && strcmp(type->valuestring, "mode") == 0){
+		if(portal != nullptr){
+			portal->setRc(cJSON_IsTrue(cJSON_GetObjectItem(root, "rc")), "portal");
+		}
+	}else if(cJSON_IsString(type) && strcmp(type->valuestring, "listen") == 0){
+		// The portal's Listen button: picked up by IdleState like the other pushes.
+		{
+			Lock lock(pushMutex);
+			pending = {};
+			pending.chatListen = true;
+			hasPending = true;
+		}
+		CMF_LOG(VoiceLink, LogLevel::Info, "Chat listen requested");
+		OnPush.broadcast();
 	}else if(cJSON_IsString(type) && strcmp(type->valuestring, "endpoint") == 0){
 		const cJSON* reason = cJSON_GetObjectItem(root, "reason");
 		OnEndpoint.broadcast(!(cJSON_IsString(reason) && strcmp(reason->valuestring, "nospeech") == 0));
@@ -522,6 +557,7 @@ void VoiceLink::handleMessage(const char* data, int len){
 			pending.alarm = strcmp(type->valuestring, "alarm") == 0;
 			pending.song = cJSON_IsString(song) ? song->valuestring : "";
 			pending.routine = routine && cJSON_IsString(name) ? name->valuestring : "";
+			pending.chatListen = false;
 			hasPending = !pending.say.empty() || pending.scenario >= 0 || pending.alarm || !pending.routine.empty();
 		}
 		CMF_LOG(VoiceLink, LogLevel::Info, "Push from gateway: say=%u chars, scenario=%d%s%s%s%s", (unsigned) pending.say.size(), pending.scenario,

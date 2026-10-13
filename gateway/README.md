@@ -50,7 +50,9 @@ Requires Python 3.10+.
 | `setup.py` | the setup wizard |
 | `calendar_auth.py`, `calendar_reauth.ps1` / `.sh` | Google Calendar sign-in and weekly renewal |
 | `push.py` | make the robot say something from another program (needs `BB_ADMIN_TOKEN`) |
-| `camera.py` | the camera viewer (sign-in page on port 8766) and its accounts: `python camera.py adduser <name>` |
+| `camera.py` | the explorer portal's web server (sign-in page on port 8766) and its accounts: `python camera.py adduser <name>` |
+| `portal.py` | explorer mode: VC/RC, one driver at a time, the joystick, typed speech and chat listening, battery and Wi-Fi |
+| `portal_page.py` | the portal page itself (HTML, CSS and script) |
 | `*.py` (the rest), `Scenarios.h` | the gateway itself |
 
 **Never share or commit** `secret.env` (your keys), `data/` (calendar login, camera accounts, transcripts, recordings) or `secrets/`.

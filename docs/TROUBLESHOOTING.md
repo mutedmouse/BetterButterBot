@@ -118,15 +118,21 @@ Those warnings come from the bottom sensor and the motion sensor. They now clear
 **"Come find me" says "On my way" but doesn't move.**
 Same two causes as above, or the robot isn't upright. It searches by turning in steps for up to a full circle and says so if it can't see anyone. Its face detector only finds faces within roughly 1–1.5 m, at roughly its own height: put it on a desk and sit in front of it. The gateway log shows each step (`robot: find me: look 3 of 13: 4 frames, 0 detections`, `aim 1: turning 23 degrees left toward the face`). If it keeps stopping short of you or overshooting when it aims, the camera field-of-view estimate (`CameraFovDeg` in `SummonEventRoutine.h`) needs adjusting.
 
-## Camera viewer
+## Explorer portal
 
 | Symptom | Fix |
 |---|---|
-| The page says there are no accounts | Create one: [GATEWAY-CONFIG.md](GATEWAY-CONFIG.md#camera-viewer-camera). |
+| The page says there are no accounts | Create one: [GATEWAY-CONFIG.md](GATEWAY-CONFIG.md#explorer-portal-camera). |
 | The page doesn't load | Allow TCP 8766 through the gateway computer's firewall (Docker: the compose file publishes it). |
 | "Too many failed sign-ins" | Wait 5 minutes. |
-| Signed in, but the picture is black or frozen | Say "start the camera stream", then reload. The stream also pauses while the robot is listening or using its camera for something else. |
+| The picture is black | Turn on **CS**. The stream is off after every restart. It also pauses while the robot listens or uses its camera for something else. |
 | The robot says "My firmware needs an update before I can stream my camera" | Flash the current firmware. |
+| RC and Listen are greyed out: "needs a robot firmware update" | Flash v1.0.2 firmware. Older firmware gets the camera and typed speech only. |
+| The joystick or arrow keys do nothing | Switch to **RC** first. With someone else driving, the page says "Driven by <name>". For arrow keys, press Shift+D (the ⌨ button turns yellow) and click outside the chat box. |
+| Stuck on "Connecting to the gateway…" behind a reverse proxy | The proxy must pass WebSocket upgrades and keep the original `Host` header. |
+| The robot drops off Wi-Fi while driving with the camera on, and only comes back after a restart | Firmware before v1.0.2 had too few Wi-Fi receive buffers for both at once. Flash v1.0.2. |
+| The camera turns choppy or the robot stops far from the router | Watch 📶: below about −74 dBm the camera struggles, below −78 the link may drop and RC stops the robot. |
+| 🔋 shows "⚡ Charging" with no number | Expected: the robot can't measure its level while the charger raises the voltage. The number returns once it's unplugged. |
 
 ## Phone app / RC controller can't find the robot
 

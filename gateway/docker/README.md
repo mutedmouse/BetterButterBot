@@ -39,7 +39,7 @@ docker compose logs -f        # the first start downloads the speech model (up t
 
 `docker compose ps` shows **healthy** once the gateway is listening on port 8765. Allow incoming TCP 8765 through the host firewall. The robot's firmware needs `ws://<this machine's IP>:8765/bb`.
 
-**Camera viewer (optional):** create an account with `docker compose exec gateway-cpu python camera.py adduser <name>` (`gateway-gpu` on the GPU profile; it asks for the password), allow TCP 8766, and open `http://<this machine's IP>:8766/`.
+**Explorer portal (optional, camera + remote control + chat):** create an account with `docker compose exec gateway-cpu python camera.py adduser <name>` (`gateway-gpu` on the GPU profile; it asks for the password), allow TCP 8766, and open `http://<this machine's IP>:8766/`.
 
 ## Everyday commands
 

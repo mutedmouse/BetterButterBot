@@ -52,6 +52,7 @@ private:
 	void onMotion(MotionType type);
 	void onPush();
 	void onWake();
+	void onMode(bool rc);
 	bool startPush();
 
 	// tick() helpers. All run on the StateMachine thread, serialized with onButtonEvent.

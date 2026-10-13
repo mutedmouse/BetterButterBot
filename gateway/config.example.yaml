@@ -119,3 +119,6 @@ llm:
 #   port: 8766               # http://<gateway-ip>:8766/
 #   tls_cert: ""             # set both to serve HTTPS (plain HTTP sends the password unencrypted on your network)
 #   tls_key: ""
+#   # Reverse proxies allowed to pass on the visitor's real address and https (X-Forwarded-For /
+#   # X-Forwarded-Proto): sign-in lockouts then count each visitor, not the proxy. Default: this machine only.
+#   trusted_proxies: ["127.0.0.1", "::1"]

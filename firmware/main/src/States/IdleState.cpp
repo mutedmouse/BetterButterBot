@@ -28,6 +28,7 @@
 #include "Services/VoiceLink.h"
 #include "Services/WakeWord.h"
 #include "Services/CameraStream.h"
+#include "Services/Portal.h"
 #include <Scenarios.h>
 
 DEFINE_LOG(IdleState)
@@ -101,6 +102,11 @@ IdleState::IdleState(BBStateMachine* sm) : State(sm){
 	}
 	ListenState::cancelFollowUp();
 
+	// The portal's RC mode: the driver is in control (see Portal.h).
+	if(Portal* portal = Portal::get()){
+		sm->bindState(portal->OnMode, this, &IdleState::onMode);
+	}
+
 	// "butterbot" wake word: only listened for while idle (the mic is shared).
 	if(WakeWord* wakeWord = app->getService<WakeWord>()){
 		sm->bindState(wakeWord->OnWake, this, &IdleState::onWake);
@@ -131,6 +137,15 @@ void IdleState::tick(float deltaTime){
 	}
 
 	if(sm->getActiveRoutine() == nullptr && startPush()){
+		return;
+	}
+
+	// Remote control: no idle or event routines; only the portal moves the robot. Events stay queued
+	// in the EventBag and run once the robot is back in voice control.
+	if(Portal::rcActive()){
+		if(sm->getActiveRoutine() != nullptr){
+			endActiveRoutine();
+		}
 		return;
 	}
 
@@ -285,6 +300,15 @@ void IdleState::rescheduleRandomRoutine(){
 }
 
 int64_t IdleState::getDynamicTickInterval() const{
+	if(Portal::rcActive()){
+		// Pushes (typed chat, timers, Listen) and mode changes wake this state through their events.
+		VoiceLink* voiceLink = ApplicationStatics::getApplication()->getService<VoiceLink>();
+		if(sm->getActiveRoutine() != nullptr || (voiceLink != nullptr && voiceLink->pushPending())){
+			return 0;
+		}
+		return portMAX_DELAY;
+	}
+
 	if(eventBag == nullptr){
 		CMF_LOG(IdleState, LogLevel::Error, "Event Bag is nullptr.");
 		return -1;
@@ -321,8 +345,18 @@ int64_t IdleState::getDynamicTickInterval() const{
 	return nextRandomRoutineTime - millis();
 }
 
+void IdleState::onMode(bool rc){
+	if(rc){
+		if(sm->getActiveRoutine() != nullptr){
+			endActiveRoutine();   // e.g. a wander in progress: the driver takes over
+		}
+	}else{
+		rescheduleRandomRoutine();   // back in VC: no idle routine straight away
+	}
+}
+
 void IdleState::onWake(){
-	if(sm->isTransitionPending()){
+	if(sm->isTransitionPending() || Portal::rcActive()){
 		return;
 	}
 	sm->transitionTo<ListenState>(); // same as a short button press
@@ -339,6 +373,18 @@ bool IdleState::startPush(){
 	VoiceLink* voiceLink = ApplicationStatics::getApplication()->getService<VoiceLink>();
 	VoiceLink::Push push;
 	if(voiceLink == nullptr || !ServiceLocator::ScenarioRoutineServiceInstance || !voiceLink->takePush(push)){
+		return false;
+	}
+
+	if(push.chatListen){
+		ListenState::requestChat();   // the portal's Listen button
+		sm->transitionTo<ListenState>();
+		return true;
+	}
+
+	// In RC only speech gets through (typed chat, timers, alarms); nothing else may move the robot.
+	if(Portal::rcActive() && (!push.routine.empty() || push.scenario >= 0)){
+		CMF_LOG(IdleState, LogLevel::Info, "Remote control: dropped a pushed routine");
 		return false;
 	}
 
@@ -375,6 +421,9 @@ bool IdleState::startPush(){
 }
 
 void IdleState::onCommand(Ctrl::Command cmd){
+	if(Portal::rcActive()){
+		return;   // the portal's driver is in control
+	}
 	if(cmd == Ctrl::Command::Listen){
 		sm->transitionTo<ListenState>();
 		return;
@@ -387,6 +436,7 @@ void IdleState::onCommand(Ctrl::Command cmd){
 
 void IdleState::onMotion(MotionType type){
 	// Events are queued to this thread; one that arrives after the floor came back is stale.
+	if(Portal::rcActive()) return;   // sensors don't interrupt remote control
 	MotionService* motion = ApplicationStatics::getApplication()->getService<MotionService>();
 	if(motion != nullptr && !motion->isLifted()) return;
 	if(millis() >= instantEventCutoff && canStartInstantRoutine()){
@@ -399,6 +449,9 @@ bool IdleState::canStartInstantRoutine() const{
 }
 
 void IdleState::onRCData(const RCData& data){
+	if(Portal::rcActive()){
+		return;   // the portal's driver is in control; the controller waits for voice control
+	}
 	if(ServiceLocator::ControllerStateInstance){
 		ServiceLocator::ControllerStateInstance->updateRCData(data);
 	}
@@ -421,6 +474,12 @@ void IdleState::onButtonEvent(int button, ISRButtonInput::Action action){
 	buttonHeld = false;
 
 	if(millis() - lastBtnPressTime > MaximumBtnHoldForTransition){
+		return;
+	}
+
+	// Remote control: a short press is the override for anyone next to the robot - stop, back to VC.
+	if(Portal::rcActive()){
+		Portal::get()->setRc(false, "button");
 		return;
 	}
 

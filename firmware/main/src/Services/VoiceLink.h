@@ -45,8 +45,11 @@ public:
 	/** Bring Wi-Fi back up once RC mode has released the radio. Non-blocking. */
 	void resume();
 
-	/** Start streaming the contents of rb to the gateway. followUp shortens the gateway's no-speech wait. */
-	bool beginUtterance(RingbufHandle_t rb, bool followUp = false);
+	/**
+	 * Start streaming the contents of rb to the gateway. followUp shortens the gateway's no-speech wait;
+	 * chat marks the portal's Listen button (the gateway returns text only, never a command).
+	 */
+	bool beginUtterance(RingbufHandle_t rb, bool followUp = false, bool chat = false);
 
 	/**
 	 * Background-agent push from the gateway: something to say, or a scenario to run, whenever the
@@ -58,6 +61,7 @@ public:
 		bool alarm = false; // sing the alarm song, then say `say`
 		std::string song;   // with alarm: which song ("timer" = toast song); empty = butter song
 		std::string routine; // a built-in routine with no voice command of its own ("summon" = find me)
+		bool chatListen = false; // the portal's Listen button: one listen whose words go to the chat only
 	};
 	bool takePush(Push& out);
 	bool pushPending() const;
@@ -81,11 +85,14 @@ public:
 	enum class FrameResult : uint8_t { Sent, Busy, Failed };
 	FrameResult sendFrame(const uint8_t* data, size_t len);
 
-	/** Send a small JSON text message (status reports). */
-	bool sendText(const char* json);
+	/** Send a small JSON text message (status reports); timeoutMs 0 = the link's usual send timeout. */
+	bool sendText(const char* json, uint32_t timeoutMs = 0);
 
 	/** Set once at startup; {"type":"camera"} messages from the gateway are forwarded to it. */
 	void setCameraStream(class CameraStream* stream){ cameraStream = stream; }
+
+	/** Set once at startup; RC mode, the joystick and status reports (see Portal.h). Ticked from this task. */
+	void setPortal(class Portal* p){ portal = p; }
 
 	/** OnResult index meaning "only the wake word was heard: start a fresh listen". */
 	static constexpr int RewakeIndex = -2;
@@ -139,6 +146,7 @@ private:
 	SemaphoreHandle_t pushMutex = nullptr;
 	Push pending;
 	class CameraStream* cameraStream = nullptr;
+	class Portal* portal = nullptr;
 	bool hasPending = false;
 
 	RingbufHandle_t rb = nullptr;

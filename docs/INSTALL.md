@@ -98,7 +98,7 @@ Allow incoming **TCP port 8765** on the gateway computer:
   `New-NetFirewallRule -DisplayName "ButterBot gateway" -Direction Inbound -Protocol TCP -LocalPort 8765 -Action Allow -Profile Private`
 - **Linux with ufw:** `sudo ufw allow 8765/tcp`
 
-For the optional camera viewer, open **TCP 8766** the same way.
+For the optional explorer portal (camera, remote control, chat), open **TCP 8766** the same way.
 
 ### Check it's running
 
@@ -219,7 +219,7 @@ No "Network voice ready"? See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#it-never-s
 - **Calendar:** read your day, add events by voice, meeting reminders. See [CALENDAR.md](CALENDAR.md).
 - **A different or faster LLM:** see [LLM-PROVIDERS.md](LLM-PROVIDERS.md).
 - **Personality, follow-up timing, speech engines, letting other programs make it talk:** see [GATEWAY-CONFIG.md](GATEWAY-CONFIG.md).
-- **Live camera view in a browser:** create a viewer account; see [GATEWAY-CONFIG.md](GATEWAY-CONFIG.md#camera-viewer-camera).
+- **Explorer mode (camera, driving and chat in a browser):** create a portal account; see [GATEWAY-CONFIG.md](GATEWAY-CONFIG.md#explorer-portal-camera).
 
 ## 6. Check that it works
 

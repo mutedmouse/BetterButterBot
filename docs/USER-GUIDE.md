@@ -60,19 +60,31 @@ They're stored on the gateway, not the robot, so they survive restarts. If the r
 | "Turn left" / "turn right" / "turn around" / "move forward" | Moves as asked. |
 | "Do a dance" | Dances. |
 
-- **It won't move while plugged in** (USB or charger counts as charging); it says so.
+- **It won't move by voice while plugged in** (USB or charger counts as charging); it says so. Explorer mode has no such limit (below).
 - **It stops if it's lifted or at an edge:** its bottom sensor watches the floor. It bounces a little as it moves, so single readings are ignored: it stops after 4 seconds without floor, or 0.5 s of something close in front. Very dark or glossy floors can still read as "no floor".
 
-## Live camera view
+## Explorer mode: the robot portal
 
-Watch what ButterBot sees from a browser on your home network. It's off until you ask:
+Take ButterBot on a journey from your couch. The portal is a web page served by the gateway: open `http://<gateway-ip>:8766/` in a browser on your home network and sign in. The account is created on the gateway; see [GATEWAY-CONFIG.md](GATEWAY-CONFIG.md#explorer-portal-camera).
 
-| Say | What happens |
+<p align="center"><img src="images/portal.svg" alt="The robot portal: camera view, VC/RC and CS switches, battery and Wi-Fi, joystick and chat" width="700"></p>
+
+| Control | What it does |
 |---|---|
-| "Start the camera stream" / "turn on your camera" | "Camera stream on." It streams until you stop it, even across restarts. |
-| "Stop the camera" / "camera off" | "Camera stream off." |
+| **VC / RC** | **Voice Control** is the normal robot (it always starts in VC). **Remote Control** hands it to you: the wake word, voice commands and idle routines are off, and only the portal moves it. |
+| **CS** | Camera stream on or off. Off after every restart. "Start the camera stream" / "stop the camera" by voice flip the same switch. |
+| **Joystick** | Grab the knob and drag it within the ring: the further out, the faster, up to full speed at the rim. The dashed inner ring is a dead zone where it stops but you keep hold, so you can swing through the middle to reverse. Let go and it springs back and stops. |
+| **Arrow keys** | **Shift+D** (or the ⌨ button) turns them on, **Esc** turns them off. Full speed only: ↑ ↓ drive, ← → spin in place, one of each for a diagonal; opposite keys cancel out. |
+| **Chat** | Type a line and **Send** (or Enter): ButterBot says it out loud, word for word. **🎤 Listen** makes it listen once; what it hears appears in the chat as text and is never run as a command. It doesn't listen while it's talking. |
+| **🔋 / 📶** | Battery level (measured while parked; **⚡ Charging** / **⚡ Full** on the charger) and the Wi-Fi signal at the robot, updated every minute, every 5 s in RC. Amber and red mean head back towards the router or the charger. |
 
-Open `http://<gateway-ip>:8766/` and sign in. The account is created on the gateway; see [GATEWAY-CONFIG.md](GATEWAY-CONFIG.md#camera-viewer-camera). The robot sends 320×240 at about 2–3 frames a second, shown at 640×480. It's a look-in view, not smooth video. While you watch, it pauses the stream on its own whenever something else needs the camera ("who is this", finding you) and resumes afterwards; frames also pause while it's listening to you.
+**Driving in RC:**
+- **One driver at a time.** Whoever switches to RC drives; everyone else signed in sees "Driven by <name>" and can watch and chat.
+- **Nothing on the robot second-guesses the driver.** The floor and front sensors are off for the whole of RC, and it drives while charging too (so it can leave a charging dock). Watch the camera, mind stairs and edges, and remember the picture lags about half a second.
+- **It stops by itself** when your stick or keys stop reaching it for 0.4 s: the page closed, Wi-Fi faded, or you let go.
+- **Back to VC** when you press VC, sign out, short-press the robot's button (the override for anyone next to it), the connection drops, or it restarts. Closing the page without signing out hands back control after 30 seconds.
+
+The camera sends 320×240 at about 2–3 frames a second, shown at 640×480: a look-in view, not smooth video. It pauses by itself whenever something else needs the camera ("who is this", finding you) and while it listens, and resumes afterwards.
 
 ## Calendar (if connected)
 

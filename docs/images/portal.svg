@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 760" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+  <!-- The explorer portal, drawn to match portal_page.py (dark theme, ButterBot yellow). -->
+  <rect width="700" height="760" rx="12" fill="#111"/>
+  <!-- header -->
+  <line x1="0" y1="52" x2="700" y2="52" stroke="#333"/>
+  <text x="20" y="32" font-size="16" font-weight="700" fill="#d9a400">ButterBot</text>
+  <rect x="112" y="14" width="40" height="26" rx="6" fill="#1c1c1c" stroke="#333"/>
+  <text x="132" y="32" font-size="13" fill="#ddd" text-anchor="middle">VC</text>
+  <rect x="152" y="14" width="40" height="26" rx="6" fill="#d9a400"/>
+  <text x="172" y="32" font-size="13" font-weight="600" fill="#111" text-anchor="middle">RC</text>
+  <rect x="202" y="14" width="44" height="26" rx="6" fill="#d9a400"/>
+  <text x="224" y="32" font-size="13" font-weight="600" fill="#111" text-anchor="middle">CS</text>
+  <rect x="256" y="14" width="72" height="26" rx="6" fill="none" stroke="#333"/>
+  <text x="292" y="32" font-size="13" fill="#ddd" text-anchor="middle">🔋 82%</text>
+  <rect x="336" y="14" width="138" height="26" rx="6" fill="none" stroke="#333"/>
+  <text x="405" y="32" font-size="13" fill="#ddd" text-anchor="middle">📶 ▂▄▆· -58 dBm</text>
+  <text x="590" y="32" font-size="13" fill="#888" text-anchor="end">you</text>
+  <rect x="600" y="14" width="84" height="26" rx="6" fill="none" stroke="#333"/>
+  <text x="642" y="32" font-size="13" fill="#ddd" text-anchor="middle">Sign out</text>
+  <!-- camera -->
+  <rect x="30" y="70" width="640" height="400" rx="8" fill="#000"/>
+  <rect x="30" y="70" width="640" height="400" rx="8" fill="url(#room)"/>
+  <defs>
+    <linearGradient id="room" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3340"/><stop offset="0.62" stop-color="#3b3a36"/><stop offset="0.63" stop-color="#5a4a3a"/><stop offset="1" stop-color="#6b5640"/>
+    </linearGradient>
+  </defs>
+  <rect x="420" y="160" width="150" height="150" rx="4" fill="#4a5568" opacity="0.7"/>
+  <rect x="90" y="250" width="200" height="90" rx="10" fill="#7a3b3b" opacity="0.8"/>
+  <text x="350" y="452" font-size="12" fill="#ccc" text-anchor="middle" opacity="0.8">live camera · 320×240 shown at 640×480</text>
+  <text x="34" y="492" font-size="13" fill="#888">Remote control: voice is off.</text>
+  <!-- joystick -->
+  <circle cx="125" cy="600" r="90" fill="#1c1c1c" stroke="#333" stroke-width="2"/>
+  <circle cx="125" cy="600" r="31" fill="none" stroke="#555" stroke-width="2" stroke-dasharray="5 4"/>
+  <circle cx="160" cy="548" r="11" fill="#d9a400"/>
+  <text x="125" y="712" font-size="13" fill="#d9a400" text-anchor="middle" font-family="ui-monospace, monospace">L 100  R 33</text>
+  <text x="125" y="732" font-size="12" fill="#888" text-anchor="middle">Drag, or hold the arrow keys</text>
+  <rect x="58" y="740" width="134" height="16" rx="4" fill="#d9a400"/>
+  <text x="125" y="752" font-size="10" font-weight="600" fill="#111" text-anchor="middle">⌨ Arrow keys: on  Shift+D</text>
+  <!-- chat -->
+  <rect x="246" y="510" width="424" height="160" rx="8" fill="#1c1c1c" stroke="#333"/>
+  <rect x="256" y="522" width="404" height="28" rx="6" fill="#2a2a2a"/>
+  <text x="266" y="541" font-size="11" fill="#888">you said</text>
+  <text x="320" y="541" font-size="13" fill="#ddd">Hello from the couch!</text>
+  <rect x="256" y="556" width="404" height="28" rx="6" fill="#1f2b36"/>
+  <text x="266" y="575" font-size="11" fill="#888">heard</text>
+  <text x="306" y="575" font-size="13" fill="#ddd">Hi ButterBot, come back to the kitchen.</text>
+  <rect x="246" y="680" width="340" height="32" rx="6" fill="#111" stroke="#333"/>
+  <text x="258" y="701" font-size="13" fill="#666">Type something for ButterBot to say</text>
+  <rect x="594" y="680" width="76" height="32" rx="6" fill="#d9a400"/>
+  <text x="632" y="701" font-size="13" font-weight="600" fill="#111" text-anchor="middle">Send</text>
+  <rect x="246" y="720" width="424" height="30" rx="6" fill="#1c1c1c" stroke="#333"/>
+  <text x="458" y="740" font-size="13" fill="#ddd" text-anchor="middle">🎤 Listen</text>
+</svg>

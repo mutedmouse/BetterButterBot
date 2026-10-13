@@ -178,9 +178,9 @@ Set-up steps are in [CALENDAR.md](CALENDAR.md). Reminder times changed by voice 
 
 ---
 
-## Camera viewer (`camera`)
+## Explorer portal (`camera`)
 
-A sign-in page that shows the robot's live camera on your network. The robot only streams after "Butterbot, start the camera stream" and keeps streaming until "stop the camera".
+The robot portal behind a sign-in on your network: the live camera, VC/RC mode with joystick and arrow-key driving, typed speech and one-shot listening, battery and Wi-Fi. What each control does is in the [user guide](USER-GUIDE.md#explorer-mode-the-robot-portal). The camera only streams once asked (the portal's CS switch, or "Butterbot, start the camera stream") and stays on until asked to stop; it is always off after a restart. Remote control and listening need v1.0.2 robot firmware; older firmware gets the camera and typed speech only.
 
 1. **Create an account** on the gateway machine. It asks for the password twice; nothing goes on the command line:
    | Gateway runs as | Command |
@@ -190,16 +190,19 @@ A sign-in page that shows the robot's live camera on your network. The robot onl
 
    `python camera.py list` and `python camera.py deluser <name>` manage accounts. Passwords are stored as salted scrypt hashes in `data/camera_users.json`; changes apply without a restart.
 2. **Allow incoming TCP 8766** on the gateway computer (like 8765 in [INSTALL.md](INSTALL.md#open-the-firewall)).
-3. **Open** `http://<gateway-ip>:8766/` and sign in. Sessions last 12 hours; five wrong passwords lock that address out for 5 minutes.
+3. **Open** `http://<gateway-ip>:8766/` and sign in. Sessions last 12 hours; five wrong passwords lock that address out for 5 minutes. Every signed-in account can drive, one at a time.
 
 ```yaml
 camera:
   port: 8766          # default
   tls_cert: ""        # set both to serve HTTPS instead of HTTP
   tls_key: ""
+  trusted_proxies: ["127.0.0.1", "::1"]   # default: reverse proxies on this machine (see below)
 ```
 
 Plain HTTP sends the password unencrypted across your network. If that matters, give it a certificate (`tls_cert` / `tls_key`, PEM files) and use `https://`.
+
+**Behind a reverse proxy:** if a proxy on the gateway machine serves the portal (for example to add HTTPS), it should pass `X-Forwarded-For` and `X-Forwarded-Proto`. The portal believes those headers only from the addresses in `trusted_proxies`, so sign-in lockouts count each visitor rather than the proxy, and the session cookie is marked `Secure` over HTTPS. Anyone else sending those headers is judged by their own address. Never put the gateway's port 8765 (the robot's voice link, which has no sign-in) behind a proxy.
 
 ---
 

@@ -34,6 +34,7 @@
 #include "ScenarioRoutineMappings.h"
 #include "Services/VoiceLink.h"
 #include "Services/WakeWord.h"
+#include "Services/Portal.h"
 #include <esp_heap_caps.h>
 
 DEFINE_LOG(ListenState)
@@ -209,9 +210,13 @@ ListenState::ListenState(BBStateMachine* sm) : State(sm){
 
     const Application* app = ApplicationStatics::getApplication();
 
-    followUp = followUpFlag.exchange(false);
+    chat = chatFlag.exchange(false);
+    followUp = followUpFlag.exchange(false) && !chat;
     const bool quickIntro = quickIntroFlag.exchange(false);
-    if(followUp){
+    if(Portal* portal = Portal::get()){
+        portal->setListening(true);
+    }
+    if(followUp || chat){
         playClip(FollowUpChirp); // short "still listening" cue instead of the full intro
     }else if(quickIntro){
         // Re-woken mid-conversation: a plain "Yes?" instead of up to 2.5 s of intro effects.
@@ -273,6 +278,12 @@ ListenState::ListenState(BBStateMachine* sm) : State(sm){
     }
 
     cloud = false;
+    if(chat){
+        // The portal's Listen only makes sense through the gateway; never fall back to on-device.
+        CMF_LOG(ListenState, LogLevel::Warning, "Chat listen: gateway not ready");
+        sm->transitionTo<IdleState>();
+        return;
+    }
     if(followUp){
         // Follow-ups only make sense with the gateway; otherwise just go back to idle quietly.
         sm->transitionTo<IdleState>();
@@ -316,7 +327,7 @@ bool ListenState::startCloud(){
         audio->waitEnd(portMAX_DELAY);
     }
 
-    if(!voiceLink->beginUtterance(streamBuffer, followUp)){
+    if(!voiceLink->beginUtterance(streamBuffer, followUp, chat)){
         CMF_LOG(ListenState, LogLevel::Warning, "Gateway unavailable, using on-device recognition");
         releaseStream();
         return false;
@@ -455,6 +466,10 @@ ListenState::~ListenState(){
         voiceLink->resume();
     }
 
+    if(Portal* portal = Portal::get()){
+        portal->setListening(false);
+    }
+
     if(timedOut){
         playPhraseBlocking(app, Phrase::ListeningTimeout);
     }
@@ -546,6 +561,12 @@ void ListenState::onCloudResult(bool recognized, int index, std::string transcri
         voiceLink->cancelUtterance();
     }
     CMF_LOG(ListenState, LogLevel::Info, "Result after %lu ms of listening", (unsigned long) (millis() - streamStartMs));
+
+    // The portal's Listen button: the gateway put the words in the chat; nothing to run or say.
+    if(chat){
+        sm->transitionTo<IdleState>();
+        return;
+    }
 
     // The gateway only knows the scenario table; IR phrases stay on the on-device path for now.
     if(index >= static_cast<int>(activations.size())){

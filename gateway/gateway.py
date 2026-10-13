@@ -31,6 +31,7 @@ from camera import CameraRelay
 from endpoint import Endpointer, decode, load_silero, normalize
 from intent import IntentMatcher, normalize as normalize_text
 from agent import Agent
+from portal import PORTAL_SAY_MAX, PortalMixin  # noqa: F401  (PORTAL_SAY_MAX: tests read it here)
 
 HERE = Path(__file__).resolve().parent
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
@@ -67,7 +68,7 @@ MAX_SECONDS = 10
 log = logging.getLogger("gateway")
 
 
-class Gateway:
+class Gateway(PortalMixin):
     def __init__(self, args):
         self.args = args
         self.acts = vocab.load(Path(args.scenarios))
@@ -97,7 +98,10 @@ class Gateway:
         self.robot_camera: dict[str, bool] = {}   # device ip -> firmware can stream its camera
         cam_cfg = self.cfg.get("camera", {}) or {}
         self.camera = CameraRelay(self.data_dir, port=int(cam_cfg.get("port", 8766)),
-                                  tls_cert=cam_cfg.get("tls_cert", ""), tls_key=cam_cfg.get("tls_key", ""))
+                                  tls_cert=cam_cfg.get("tls_cert", ""), tls_key=cam_cfg.get("tls_key", ""),
+                                  trusted_proxies=cam_cfg.get("trusted_proxies", ["127.0.0.1", "::1"]))
+        self.camera.portal = self
+        self.portal_init()
         self.agent = Agent(self.db, self.cfg.get("timezone") or os.environ.get("BB_TZ", "UTC"), self.push,
                            calendar_cfg=self.cfg.get("calendar"), data_dir=self.data_dir,
                            phrases={a.text: a.index for a in self.acts})
@@ -129,9 +133,11 @@ class Gateway:
                 return False
         try:
             await ws.send(json.dumps(message))
-            return True
         except websockets.ConnectionClosed:
             return False
+        if message.get("type") == "camera":   # voice, the LLM's robot_action or the portal switch
+            await self.set_camera_wanted(bool(message.get("on")))
+        return True
 
     async def camera_command(self, dev: str, on: bool) -> str:
         """Voice "start/stop the camera stream" (also used by the robot_action tool)."""
@@ -141,19 +147,16 @@ class Gateway:
             return "My firmware needs an update before I can stream my camera."
         if not await self.push(dev, {"type": "camera", "on": on}):
             return "I couldn't reach my camera just now."
-        self.set_camera_wanted(on)
         if on:
             return "Camera stream on. Say stop the camera when you're done."
         return "Camera stream off."
 
-    # The stream stays on until asked to stop, across robot reboots and gateway restarts.
-    def camera_wanted(self) -> bool:
-        row = self.db.execute("select value from settings where key='camera_wanted'").fetchone()
-        return bool(row and row[0] == "1")
-
-    def set_camera_wanted(self, on: bool):
-        self.db.execute("insert or replace into settings(key, value) values('camera_wanted', ?)", ("1" if on else "0",))
-        self.db.commit()
+    # The stream stays on until asked to stop. It is never restored: the robot and the gateway always
+    # start with it off, and a dropped robot connection ends it.
+    async def set_camera_wanted(self, on: bool):
+        if self.camera.wanted != on:
+            self.camera.wanted = on
+            await self.camera.broadcast_status()
 
     async def warmup(self):
         t = time.perf_counter()
@@ -170,7 +173,7 @@ class Gateway:
         return name
 
     async def handle_utterance(self, ws, dev: str, pcm: bytes, reason: str, levels: str = "",
-                               followup: bool = False):
+                               followup: bool = False, chat_listen: bool = False):
         seconds = len(pcm) / 2 / SAMPLE_RATE
         audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         t = time.perf_counter()
@@ -184,6 +187,13 @@ class Gateway:
                 log.warning("STT failed: %s", e)
                 text = ""
         stt_ms = int((time.perf_counter() - t) * 1000)
+        if chat_listen:
+            # The portal's Listen button: text for the chat only, never a command or a question.
+            await ws.send(json.dumps({"type": "result", "recognized": False, "index": -1, "text": text,
+                                      "score": 0, "ms": stt_ms, "chat": True}))
+            log.info("%s %.1fs (%s) stt=%dms chat listen [%s]", dev, seconds, reason, stt_ms, levels)
+            await self.chat_heard(dev, text)
+            return
         m = self.matcher.match(text)
         result = {"type": "result", "recognized": m.recognized, "index": m.index,
                   "text": text, "score": round(m.score, 1), "ms": stt_ms}
@@ -257,6 +267,7 @@ class Gateway:
         pcm = bytearray()
         streaming = False
         followup = False
+        chat_listen = False
         ep = Endpointer(silero_session=self.silero)
         codec = "pcm16"
         frame_len = 0
@@ -276,7 +287,7 @@ class Gateway:
                             # now, then transcribe (and maybe ask the LLM) while it waits.
                             streaming = False
                             await ws.send(json.dumps({"type": "endpoint", "reason": ended}))
-                            await self.handle_utterance(ws, dev, bytes(pcm), ended, ep.summary(), followup)
+                            await self.handle_utterance(ws, dev, bytes(pcm), ended, ep.summary(), followup, chat_listen)
                     continue
                 ev = json.loads(msg)
                 kind = ev.get("type")
@@ -290,11 +301,20 @@ class Gateway:
                         self.robot_songs[dev] = set(ev.get("songs") or ["alarm"])
                         self.robot_routines[dev] = set(ev.get("routines") or [])
                         self.robot_camera[dev] = bool(ev.get("camera"))
-                        log.info("%s firmware: songs=%s routines=%s camera=%s", dev, sorted(self.robot_songs[dev]),
-                                 sorted(self.robot_routines[dev]) or "none", self.robot_camera[dev])
-                        if self.robot_camera[dev] and self.camera.enabled and self.camera_wanted():
-                            await self.push(dev, {"type": "camera", "on": True})   # resume after a reboot
-                            log.info("%s camera stream resumed (still wanted)", dev)
+                        self.robot_portal[dev] = bool(ev.get("portal"))
+                        self.robot_state[dev] = {"mode": "vc"}   # the robot always connects in VC
+                        log.info("%s firmware: songs=%s routines=%s camera=%s portal=%s", dev,
+                                 sorted(self.robot_songs[dev]), sorted(self.robot_routines[dev]) or "none",
+                                 self.robot_camera[dev], self.robot_portal[dev])
+                        if self.robot_camera[dev] and self.camera.enabled:
+                            # Off at every (re)connect: a robot still streaming from before a gateway
+                            # restart or a dropped connection stops; the portal and voice turn it on.
+                            await self.push(dev, {"type": "camera", "on": False})
+                        await self.camera.broadcast_status()
+                elif kind == "status":
+                    await self.robot_status(dev, ev)
+                elif kind == "battery":
+                    await self.robot_battery_report(dev, ev)
                 elif kind == "log":
                     # Robot-side diagnostics (e.g. which sensor stopped a movement).
                     log.info("%s robot: %s", dev, str(ev.get("text", ""))[:200])
@@ -308,7 +328,7 @@ class Gateway:
                     log.info("%s camera stream %s%s%s", dev, "on" if on else "off",
                              f" at {mode}" if mode else "", f" ({reason})" if reason else "")
                     if not on and reason in ("timeout", "camera error", "busy"):
-                        self.set_camera_wanted(False)   # ended for good (timeout: older firmware)
+                        await self.set_camera_wanted(False)   # ended for good (timeout: older firmware)
                     notice = {"timeout": "The camera stream has stopped.",
                               "busy": "My camera is busy right now, so I didn't start the stream.",
                               "camera error": "My camera wouldn't start streaming."}.get(reason)
@@ -334,11 +354,12 @@ class Gateway:
                         else Endpointer(silero_session=self.silero)
                     codec = ev.get("codec", "pcm16")
                     followup = bool(ev.get("followup"))
+                    chat_listen = bool(ev.get("chat"))   # the portal's Listen button: text only
                     streaming = True
                 elif kind == "end" and streaming:
                     streaming = False
                     await self.handle_utterance(ws, dev, bytes(pcm), ev.get("reason", ""),
-                                                ep.summary(), followup)
+                                                ep.summary(), followup, chat_listen)
                 elif kind == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
         except websockets.ConnectionClosed:
@@ -350,6 +371,10 @@ class Gateway:
                 self.robot_routines.pop(dev, None)
                 if self.robot_camera.pop(dev, None) and self.camera.on:
                     await self.camera.set_on(False)
+                await self.portal_robot_gone(dev)
+                if not self.robots:
+                    await self.set_camera_wanted(False)
+                await self.camera.broadcast_status()
             log.info("disconnected: %s", dev)
 
 

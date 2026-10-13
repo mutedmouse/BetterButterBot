@@ -11,6 +11,7 @@ flowchart TB
         vl["VoiceLink<br/>Wi-Fi + WebSocket"]
         mn["On-device MultiNet<br/>(fallback)"]
         rt["Routines<br/>built-in scenarios · SpeakReply · Alarm · Find me"]
+        portal_fw["Portal<br/>RC mode · motor task + stick watchdog<br/>status · battery · Wi-Fi"]
         cam["CameraStream<br/>320×240, JPEG made on the robot"]
         tts["flite speech"]
         ble["Bluetooth<br/>phone app · RC controller"]
@@ -21,7 +22,7 @@ flowchart TB
         im["Intent matcher<br/>238 command phrases"]
         chat["LLM client<br/>OpenAI-compatible / Anthropic"]
         agent["Agent<br/>timers · alarms · reminders<br/>calendar · meeting reminders"]
-        viewer["Camera viewer<br/>sign-in page, :8766"]
+        viewer["Explorer portal<br/>sign-in page, :8766"]
         db[("data/log.sqlite3")]
     end
     mic --> ww --> ls
@@ -36,7 +37,9 @@ flowchart TB
     vl --> rt --> tts
     cam -- "JPEG frames (same socket)" --> vl
     vl -- frames --> viewer
-    viewer -- "MJPEG" --> browser([Browser on your network])
+    viewer -- "mode · drive · say · listen" --> vl
+    vl <--> portal_fw
+    viewer <-- "MJPEG + WebSocket" --> browser([Browser on your network])
 ```
 
 ## A question, start to finish
@@ -77,6 +80,7 @@ stateDiagram-v2
     Listen --> Listen: "Butterbot" during follow-up → fresh listen
     Idle --> RC: controller takes over
     RC --> Idle
+    Idle --> Idle: portal RC on/off (Idle runs no routines, ignores the wake word)
 ```
 
 - **Wake word:** runs only in Idle. During a follow-up window, the listening audio is fed to it as well, so saying "Butterbot" starts a fresh question in under a second.
@@ -89,7 +93,33 @@ stateDiagram-v2
 - **Long-range find me.** The face detector shrinks every frame to ~160×120, so its range is set by that size, not the camera's. Find me switches the camera to 320×240 and also runs the detector on three full-detail 160×120 crops, which doubles the size faces appear at. Owner recognition keeps the 128×128 path its faces were registered with.
 - **Why not the camera's own JPEG?** On this robot it doesn't hold up: at 640×480 frames arrived truncated, and at 320×240 the driver dropped nearly every frame for a missing end marker, even with a slower camera clock. The robot's own compression is what CircuitMess's RC feed uses too.
 - **Frames ride the voice socket** as a `{"type":"frame"}` header plus a binary message, so the robot never listens on the network. Frames pause while you're talking to it, and the resolution steps down on its own if Wi-Fi can't keep up or frames arrive incomplete.
-- **The gateway serves the viewer** behind a sign-in (scrypt-hashed passwords, HttpOnly session cookie, lockout after repeated failures) and remembers that the stream is wanted, so it resumes after reboots.
+- **The gateway serves the portal** behind a sign-in (scrypt-hashed passwords, HttpOnly session cookie, lockout after repeated failures). The stream is never restored: it is off after the robot or the gateway restarts, and when the robot's connection drops.
+
+## Explorer mode
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (portal)
+    participant G as Gateway
+    participant R as ButterBot
+    B->>G: {"type":"mode","mode":"rc"} (one driver at a time)
+    G->>R: {"type":"mode","rc":true}
+    R-->>G: {"type":"status","mode":"rc",...}
+    Note over R: floor/front sensors off, idle routines and wake word off
+    loop every 100 ms while the stick or keys are held
+        B->>G: {"type":"drive","x":0.5,"y":1}
+        G->>R: {"type":"drive","l":100,"r":33}
+    end
+    Note over R: no drive for 400 ms: motors stop
+    B->>G: {"type":"mode","mode":"vc"} / sign-out / page gone 30 s
+    G->>R: {"type":"mode","rc":false}
+```
+
+- **The gateway mixes the stick.** Stick position becomes track speeds (forward plus turn, scaled together so a diagonal keeps its direction) after a round dead zone; a push within a few degrees of an axis goes exactly along it. Only the driver's messages reach the robot.
+- **Motors on their own task.** In RC the motors, the sensor switch and the 400 ms stick watchdog run on a task of their own on the robot, not on the network task, so a stalled connection can't keep the robot driving.
+- **No restrictions in RC.** The floor and front sensors are switched off on the base board for the whole of RC and back on (with a fresh reading) when it ends; charging doesn't block driving either. The robot's button, a dropped link or a restart always return it to VC.
+- **Chat.** Typed text is a `say` push, spoken word for word. Listen is a `listen` push: the robot streams once with `"chat":true` and the gateway returns the transcript to the page that asked, without matching commands or asking the LLM. The robot reports `speaking` / `listening` so the page never listens while it talks.
+- **Battery and Wi-Fi.** The robot reports its level (taken only after 5 s parked, because the motors dip the voltage; not measurable while charging) and RSSI after each connect, every minute, every 5 s in RC, and when the charger is plugged in or out.
 
 ## Changing your calendar by voice
 
@@ -117,6 +147,7 @@ sequenceDiagram
 
 - **One radio, shared.** The ESP32-S3 shares a single radio between Wi-Fi and Bluetooth. Constant Bluetooth advertising was found to stall the Wi-Fi link for 10–15 s at a time. So while the gateway link is up, the firmware **pauses Bluetooth advertising** (`CONFIG_BB_BLE_QUIET_ON_LAN`). Devices already connected stay connected.
 - **Separate send and receive locks.** The WebSocket client sends and receives under separate locks (`CONFIG_ESP_WS_CLIENT_SEPARATE_TX_LOCK`), so a slow audio upload can't block the gateway's replies.
+- **Enough receive buffers for explorer mode.** With the camera sending frames and the joystick streaming commands in, the original 2 Wi-Fi receive buffers ran out and wedged the link until a restart. The firmware now allows 8 (`CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM`); they are only allocated while packets arrive.
 - **Self-healing connection.** A watchdog rebuilds the WebSocket client if Wi-Fi is up but the gateway has been unreachable for 20 s, or right after Wi-Fi rejoins.
 - **Sustained sensor readings.** The treads' speed difference makes the robot bounce, so the firmware only passes on a "floor lost" after 4 s and a "something close" after 0.5 s without a break (`FloorLostConfirmMs`, `FrontCloseConfirmMs` in `BaseBoard.h`). A return to normal goes through at once. Start checks need 3 unsafe readings in a row, and "upright" averages 8 accelerometer samples (the speaker and leftover bounce shook single samples). A real lift keeps the floor lost and still stops it.
 - **Internal RAM is tight** (about 30 KB free while running). Audio buffers and task stacks live in PSRAM. Speech recognition on the robot (MultiNet) needs Wi-Fi's memory, so the robot drops Wi-Fi while it uses on-device recognition.

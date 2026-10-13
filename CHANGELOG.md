@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.0.2 (2026-10-12)
+
+**Now with explorer mode!** Take your ButterBot on a journey, from your couch. Both the robot firmware and the gateway changed: flash the app (the storage image is unchanged).
+
+### Explorer mode: the robot portal
+The camera page on port 8766 is now a portal for driving and talking through the robot ([user guide](docs/USER-GUIDE.md#explorer-mode-the-robot-portal)):
+- **VC / RC.** Voice Control is the normal robot and is where it always starts. Remote Control hands it to the portal: the wake word, voice commands, idle and event routines are off and only the driver moves it.
+  - One driver at a time; others see "Driven by <name>".
+  - Back to VC on the VC switch, signing out, a short press of the robot's button, a dropped link or a restart. A closed page hands back control after 30 s.
+- **Joystick.** Grab the knob and drag within the ring for variable speed, up to full speed at the rim. The knob shrinks to a fingertip grip while held. A dead zone in the middle stops the robot but keeps your grip, so you can swing through to reverse. Let go and it springs back and stops.
+- **Arrow keys.** Shift+D (or the ⌨ button) to turn on, Esc to turn off. Full speed: ↑ ↓ drive, ← → spin, one of each for a diagonal, opposite keys cancel.
+- **No restrictions in RC.** The floor and front sensors are switched off for the whole of RC (the driver watches the camera) and back on afterwards, and it drives while charging, so it can leave a charging dock.
+- **Stops by itself.** If the stick or keys stop reaching it for 0.4 s, the motors stop. The motors and that watchdog run on their own task on the robot, so a stalled connection can't keep it driving.
+- **Chat.** Typed text is spoken word for word. **Listen** makes the robot listen once and puts what it heard in the chat as text, never as a command. It doesn't listen while it's talking. Each sign-in session has its own chat history.
+- **CS switch** turns the camera stream on and off and follows the voice commands. The stream is now **off after every restart** and when the robot's connection drops (before, it resumed after reboots).
+- **Battery and Wi-Fi** in the header: the level (measured only after 5 s parked, because driving dips the voltage; "⚡ Charging" / "⚡ Full" on the charger, where it can't be measured) and the signal at the robot. Every minute, every 5 s in RC and when the charger is plugged in or out. Amber and red warnings, and "head back to the charger" below 15%.
+- **Security.** The portal's live connection needs a signed-in session and accepts only the portal's own page. Behind a reverse proxy on the gateway machine (`camera.trusted_proxies`), sign-in lockouts count each visitor and the session cookie is marked `Secure` over HTTPS.
+
+### Robot
+- **More Wi-Fi receive buffers (2 → 8).** With the camera streaming and the joystick sending commands, the 2 buffers ran out and the Wi-Fi link wedged until a restart. They are only allocated while packets arrive.
+- New `Portal` service: RC mode, the motor task and watchdog, status, battery and Wi-Fi reports. About 450 KB of app flash is still free.
+
+### Gateway
+- New `portal.py` and `portal_page.py`; `camera.py` serves the portal and its WebSocket.
+- The LLM's `robot_action` camera on/off now also updates the CS switch.
+
 ## v1.0.1 (2026-10-06)
 
 ### Gateway

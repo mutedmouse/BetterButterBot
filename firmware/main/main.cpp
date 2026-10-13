@@ -64,6 +64,7 @@
 #include "Util/ServiceLocator.h"
 #include "Services/VoiceLink.h"
 #include "Services/CameraStream.h"
+#include "Services/Portal.h"
 #include "Services/WakeWord.h"
 
 DEFINE_LOG(Butterbot)
@@ -102,6 +103,7 @@ protected:
 		esp_log_level_set("AlarmRoutine", ESP_LOG_INFO);
 		esp_log_level_set("BLE_ConMan", ESP_LOG_INFO);
 		esp_log_level_set("CameraStream", ESP_LOG_INFO);
+		esp_log_level_set("Portal", ESP_LOG_INFO);
 
 
 		esp_err_t ret = nvs_flash_init();
@@ -288,6 +290,8 @@ protected:
 		voiceLink->OnReady.bind(this, &Butterbot::onVoiceLinkReady);
 		// Lives for the whole run; off until the gateway asks for it (see CameraStream.h).
 		voiceLink->setCameraStream(new CameraStream(cam, voiceLink));
+		// The gateway's robot portal: RC mode, joystick, chat listening, status (see Portal.h).
+		voiceLink->setPortal(registerService<Portal>(voiceLink));
 #endif
 
 #ifdef CONFIG_BB_WAKEWORD_ENABLE
