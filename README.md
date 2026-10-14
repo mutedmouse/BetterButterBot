@@ -43,9 +43,11 @@ flowchart LR
 
 ## Getting started
 
+**Make your own instance.** This repository publishes source code only: no servers, images or accounts. Fork it or download it, and run everything from your copy ([how](docs/INSTALL.md#make-your-own-instance-first)).
+
 You need a ButterBot, a **2.4 GHz** Wi-Fi network, and a computer to run the gateway: Windows, Linux or macOS, any recent PC, or a small home server or VM. Setup takes about an hour, mostly downloads.
 
-1. **[Install the voice gateway](docs/INSTALL.md#2-install-the-voice-gateway):** run `python setup.py` to pick a speech engine and an LLM, then start it with Docker (prebuilt image or your own build) or the native installer for Windows, Linux or macOS.
+1. **[Install the voice gateway](docs/INSTALL.md#2-install-the-voice-gateway):** run `python setup.py` to pick a speech engine and an LLM, then start it with Docker (an image built from your copy) or the native installer for Windows, Linux or macOS.
 2. **[Set up the firmware build tools](docs/ESP-IDF-SETUP.md):** ESP-IDF 5.5.3, one script on Windows, Linux or macOS.
 3. **[Build and flash the robot](docs/INSTALL.md#3-build-the-robot-firmware):** set your Wi-Fi and gateway address with `configure_robot.py`, then build and flash. The guide backs up the factory firmware first.
 
@@ -70,7 +72,7 @@ You need a ButterBot, a **2.4 GHz** Wi-Fi network, and a computer to run the gat
 ```
 firmware/            ESP-IDF 5.5.3 project for the robot (based on CircuitMess's public ButterBot firmware)
   tools/             configure_robot.py · setup_idf.sh / .ps1
-gateway/             voice gateway (Python 3.10+): setup wizard, Docker image + compose bundle, native installers
+gateway/             voice gateway (Python 3.10+): setup wizard, Dockerfiles + deploy bundle, native installers
 docs/                guides and images
 ```
 

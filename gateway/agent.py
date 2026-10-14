@@ -159,6 +159,8 @@ MEETING_TOOL = {"type": "function", "function": {
                                           "[15, 5] for two reminders. Replaces the current list."}},
         "required": []}}}
 MEETING_CHECK_S = 60   # how often the calendar is polled for meetings about to start
+LOGIN_WARN_S = 24 * 3600       # warn this long before the Google sign-in runs out (and daily after) ...
+LOGIN_WARN_HOURS = (9, 21)     # ... once a day, between these local hours
 
 
 class Agent:
@@ -455,6 +457,28 @@ class Agent:
             return json.dumps({"ok": False, "error": str(e)})
         return json.dumps({"ok": False, "error": f"unknown tool {name}"})
 
+    async def check_calendar_login(self):
+        """Say, once a day in the daytime, that the calendar sign-in runs out within a day (or has)."""
+        expires = getattr(self.calendar, "login_expires_at", lambda: None)()
+        if expires is None or expires - time.time() > LOGIN_WARN_S:
+            return
+        now = self.now()
+        if not LOGIN_WARN_HOURS[0] <= now.hour < LOGIN_WARN_HOURS[1]:
+            return
+        today = now.date().isoformat()
+        if self._setting("calendar_login_warned", "") == today:
+            return
+        if expires > time.time():
+            when = dt.datetime.fromtimestamp(expires, self.tz)
+            text = (f"Heads up: my Google Calendar sign-in runs out {spoken_day(when)} at {spoken_clock(when)}. "
+                    "Please run the calendar sign-in again before then.")
+        else:
+            text = ("My Google Calendar sign-in has run out, so I can't see your calendar or remind you of meetings. "
+                    "Please run the calendar sign-in again.")
+        if await self.push("", {"type": "say", "text": text}):
+            self._set("calendar_login_warned", today)
+            log.info("calendar sign-in warning: %s", text)
+
     async def loop(self):
         while True:
             try:
@@ -481,4 +505,5 @@ class Agent:
             if time.time() - self.last_meeting_check >= MEETING_CHECK_S:
                 self.last_meeting_check = time.time()
                 await self.check_meetings()
+                await self.check_calendar_login()
             await asyncio.sleep(1)

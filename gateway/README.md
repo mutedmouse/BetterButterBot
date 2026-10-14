@@ -11,21 +11,14 @@ Pick **one** way to run it.
 
 ## Option A: Docker (recommended)
 
-**Prebuilt image, no source needed.** Copy `docker/docker-compose.yml` and `docker/.env.example` (renamed `.env`) into a folder. For an NVIDIA GPU, set `COMPOSE_PROFILES=gpu` in `.env`. Then:
-
-```
-docker compose run --rm setup          # wizard: speech engine, LLM + key, timezone
-docker compose up -d
-```
-
-See [docker/README.md](docker/README.md) for where the image comes from, updates and everyday commands.
-
-**Build the image yourself from this folder:**
+**Build the image from your own copy** (this project publishes no images), in this folder:
 
 ```
 python setup.py                                  # writes config.yaml + secret.env here
 docker compose --profile cpu up -d --build       # or --profile gpu
 ```
+
+**On a machine without the source:** push your image to your own registry, or `docker save` / `docker load` it, then run it with the deploy bundle in [docker/](docker/README.md).
 
 ## Option B: native install (no Docker)
 

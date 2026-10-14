@@ -1,5 +1,5 @@
 # ButterBot voice gateway - CPU image (linux/amd64 and linux/arm64).
-#   Prebuilt:  docker pull ghcr.io/<owner>/bb-voice-gateway:cpu        (see docker/README.md)
+#   To move it elsewhere: docker build -t ghcr.io/<your-account>/bb-voice-gateway:cpu -f Dockerfile . && docker push ...
 #   From here: docker compose --profile cpu up -d --build
 FROM python:3.12-slim
 

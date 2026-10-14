@@ -15,7 +15,23 @@ $ErrorActionPreference = "Stop"
 if (-not $GatewayHost) { throw "Say where the gateway runs: -GatewayHost user@<gateway-ip> (or -GatewayHost local), or set BB_GATEWAY_SSH." }
 if (-not (Test-Path $Client)) { throw "OAuth client JSON not found: $Client (download it from Google Cloud Console, see docs/INSTALL.md)" }
 $token = "$PSScriptRoot\secrets\google_token.json"
-$python = if (Test-Path "$PSScriptRoot\.venv\Scripts\python.exe") { "$PSScriptRoot\.venv\Scripts\python.exe" } else { "python" }
+# calendar_auth.py only needs the standard library: use the gateway's venv when it works, otherwise any
+# Python on PATH (a venv's launcher fails if the Python it was made from has moved or is unreachable).
+$python = "python"
+$venvPy = "$PSScriptRoot\.venv\Scripts\python.exe"
+if (Test-Path $venvPy) {
+    # Windows PowerShell treats a native program's error output as a terminating error under "Stop":
+    # probe with errors non-fatal, so a broken venv just falls back.
+    $ErrorActionPreference = "Continue"
+    try {
+        & $venvPy -c "import sys" 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $python = $venvPy }
+    } catch { }
+    $ErrorActionPreference = "Stop"
+}
+if ($python -eq "python" -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
+    throw "No working Python found: install Python 3.10+ (python.org), or repair the gateway's .venv."
+}
 
 $authArgs = [System.Collections.Generic.List[string]]::new()
 $authArgs.Add("-u")   # unbuffered: show the sign-in link right away

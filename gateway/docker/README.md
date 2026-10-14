@@ -1,6 +1,6 @@
 # bb-voice-gateway: Docker deploy bundle
 
-Runs the BetterButterBot voice gateway from a prebuilt image. You don't need the source code or Python, only Docker.
+Runs the BetterButterBot voice gateway from an image **you built** from your own copy of the code, on a machine that has neither the source nor Python, only Docker. This project publishes no images; build yours as described in the project's `docs/INSTALL.md` (Option A), then push it to your own registry or move it as a file.
 
 ## 1. Set up the folder
 
@@ -10,9 +10,9 @@ Put `docker-compose.yml` and `.env.example` in an empty folder, and rename `.env
 |---|---|
 | `COMPOSE_PROFILES=cpu` | any 64-bit machine: Intel/AMD, or ARM (Raspberry Pi 5, Apple Silicon, ARM servers) |
 | `COMPOSE_PROFILES=gpu` | an NVIDIA GPU: Linux with the NVIDIA Container Toolkit, or Windows with Docker Desktop (WSL2) |
-| `BB_IMAGE=ghcr.io/<owner>/bb-voice-gateway` | pull from the registry named in the project's release notes |
-| `BB_IMAGE=bb-voice-gateway` | use an image file you loaded with `docker load -i bb-voice-gateway-<version>-cpu.tar.gz` |
-| `BB_CPU_TAG` / `BB_GPU_TAG` | `cpu` / `gpu` follow the newest release; `1.0.1-cpu` etc. pins a version |
+| `BB_IMAGE=ghcr.io/<your-account>/bb-voice-gateway` | pull your image from **your own** registry |
+| `BB_IMAGE=bb-voice-gateway` | use your image file, loaded with `docker load -i bb-voice-gateway-cpu.tar.gz` |
+| `BB_CPU_TAG` / `BB_GPU_TAG` | the tags you gave your image (default `cpu` / `gpu`) |
 
 ## 2. Configure
 
@@ -47,7 +47,7 @@ docker compose logs -f        # the first start downloads the speech model (up t
 |---|---|
 | Changed `config.yaml` | `docker compose restart` |
 | Changed `secret.env` or `.env` | `docker compose up -d` (`restart` would keep the old values) |
-| Update to the newest image | `docker compose pull && docker compose up -d` |
+| Update | build and push (or save and load) your new image, then `docker compose pull && docker compose up -d` |
 | Stop / remove | `docker compose down`. Your files in this folder stay |
 | Calendar sign-in token | put `google_token.json` in `data/`; see the project's `docs/CALENDAR.md` |
 

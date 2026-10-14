@@ -19,6 +19,8 @@ calendar:                   # optional: "what does my day look like?" + meeting 
   # token_file: google_token.json  # in the data directory, made by calendar_auth.py
   # calendars: selected            # selected (ticked in Google Calendar) | primary | [list of calendar ids]
   # write_calendar: primary        # where "add an event" goes (needs calendar_auth.py --write)
+  # token_days: 7                  # sign-in lifetime: 7 while the Google app is in "Testing" (ButterBot warns
+  #                                # a day ahead, then daily once expired); 0 if your app is published
   meeting_reminders: true        # spoken reminders before timed events (voice can turn them off)
   remind_minutes_before: [15, 5] # one reminder per entry (1-120); the last says "Time to wrap up".
                                  # A voice change ("remind me 10 and 2 minutes before") is saved

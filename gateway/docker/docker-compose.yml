@@ -1,11 +1,11 @@
-# BetterButterBot voice gateway - deploy from a prebuilt image. No source checkout or Python needed.
+# BetterButterBot voice gateway - deploy an image you built from your own copy (no source or Python needed here).
 #
 #   1. Put this file and .env.example (renamed .env) in an empty folder. NVIDIA GPU: COMPOSE_PROFILES=gpu in .env
 #   2. docker compose run --rm setup        # wizard: writes config.yaml, secret.env, data/
 #   3. docker compose up -d
 #
-# Logs: docker compose logs -f      Update: docker compose pull && docker compose up -d
-# Image and cpu/gpu choice: .env (registry or an offline-loaded image). See README.md.
+# Logs: docker compose logs -f      Update: push your new image, then docker compose pull && docker compose up -d
+# Image and cpu/gpu choice: .env (your registry or an image file you loaded). See README.md.
 name: bb-voice-gateway
 
 x-gateway: &gateway

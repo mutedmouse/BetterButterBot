@@ -12,7 +12,21 @@ flowchart LR
 
 > **Before you start:** flashing replaces ButterBot's factory firmware. Step 4 makes a complete backup first, so you can always go back.
 
-**Get the code** first: `git clone` this repository, or use *Code → Download ZIP* on GitHub and unzip it. Keep the path short and without spaces, for example `C:\bbb` on Windows or `~/bbb` on Linux and macOS.
+## Make your own instance first
+
+BetterButterBot isn't a hosted service. This repository publishes source code only. It runs no servers, hosts no Docker images and holds no accounts, and your robot never talks to it. Everything you run is your own instance:
+
+| | Yours, not this project's |
+|---|---|
+| **Code** | Your own copy. **Fork** the repository on GitHub, which keeps a link for pulling later releases, or download it (*Code → Download ZIP*, or a release's `source/` zips). |
+| **Gateway** | Runs on your computer, from a Docker image **you build** from your copy (Option A below) or a native install. |
+| **Settings and keys** | Your Wi-Fi, gateway address, LLM key and calendar sign-in live only in your copy and on your gateway. They are listed in `.gitignore`, so a fork never publishes them. |
+| **Calendar** | Your own Google Cloud project and sign-in ([CALENDAR.md](CALENDAR.md)). |
+| **Explorer portal** | Accounts you create on your gateway. |
+
+**Updating** is up to you. When a new release appears on this project's Releases page, bring it into your copy (in a fork: *Sync fork* on GitHub, then `git pull`; otherwise download it again). Then re-run the gateway install and re-flash the robot.
+
+Unpack or clone your copy somewhere short and without spaces, for example `C:\bbb` on Windows or `~/bbb` on Linux and macOS.
 
 ---
 
@@ -43,22 +57,21 @@ On the gateway computer, pick **one** of the two ways to run it. Both have been 
 
 ### Option A: Docker (recommended)
 
-1. **Make a folder** for the gateway and copy two files into it from `gateway/docker/`: `docker-compose.yml`, and `.env.example` renamed to `.env`.
-2. **Edit `.env`:**
-   - `BB_IMAGE`: where the image comes from, either the project's container registry or an image file loaded with `docker load`;
-   - `COMPOSE_PROFILES=gpu`: only if you have an NVIDIA GPU (the default is `cpu`).
-3. **Run the setup wizard** inside the container:
-   ```
-   docker compose run --rm setup
-   ```
-4. **Start it:**
-   ```
-   docker compose up -d
-   ```
+Docker builds the gateway image from your own copy of the code, on the gateway computer. In your copy's `gateway` folder:
 
-Everyday commands (logs, restart, update) are in [`gateway/docker/README.md`](../gateway/docker/README.md).
+1. **Run the setup wizard:**
+   ```
+   python setup.py
+   ```
+2. **Build and start it:**
+   ```
+   docker compose --profile cpu up -d --build
+   ```
+   Use `--profile gpu` instead if you have an NVIDIA GPU.
 
-> **No published image yet, or want your own build?** In the repository's `gateway` folder, run `python setup.py`, then `docker compose --profile cpu up -d --build` (or `--profile gpu`).
+After an update, run the same `up -d --build` again. Everyday commands (logs, restart) are in [`gateway/docker/README.md`](../gateway/docker/README.md).
+
+> **Running the gateway on a machine without the source?** Build the image once, then move it there. Either push it to **your own** registry (for example `docker build -t ghcr.io/<your-account>/bb-voice-gateway:cpu -f Dockerfile .` then `docker push …`), or save it to a file (`docker save bb-voice-gateway:cpu | gzip > bb-voice-gateway-cpu.tar.gz`, then `docker load -i` on the other machine). On that machine, the deploy bundle in [`gateway/docker/`](../gateway/docker/README.md) runs it with no source and no Python.
 
 ### Option B: Native install
 

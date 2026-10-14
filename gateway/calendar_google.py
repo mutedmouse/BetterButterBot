@@ -9,6 +9,8 @@ the gateway's data directory. config.yaml:
       calendars: selected               # "selected" (as ticked in Google Calendar), "primary",
                                         # or a list of calendar ids
       write_calendar: primary           # where new events go (needs a --write sign-in)
+      token_days: 7                     # how long a sign-in lasts: 7 while the Google Cloud app is in
+                                        # "Testing" (the robot warns a day ahead); 0 once it's published
 
 Reading needs the calendar.readonly scope. With the calendar.events scope (calendar_auth.py
 --write) ButterBot can also add events, and move or delete the events it created itself: those
@@ -42,6 +44,7 @@ class GoogleCalendar:
         self.token_path = path if path.is_absolute() else data_dir / path
         self.which = cfg.get("calendars", "selected")
         self.write_calendar = cfg.get("write_calendar", "primary")
+        self.token_days = float(cfg.get("token_days", 7) or 0)
         self.tz = tz
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0))
         self.access_token = ""
@@ -62,6 +65,16 @@ class GoogleCalendar:
             return False
         scope = json.loads(self.token_path.read_text()).get("scope", "")
         return any(s in scope.split() for s in WRITE_SCOPES)
+
+    def login_expires_at(self) -> float | None:
+        """When the sign-in stops working (Google expires "Testing" apps' tokens after 7 days), or None."""
+        if not self.token_days or not self.enabled:
+            return None
+        try:
+            issued = json.loads(self.token_path.read_text()).get("issued_at") or self.token_path.stat().st_mtime
+        except (OSError, ValueError):
+            return None
+        return float(issued) + self.token_days * 86400
 
     def describe(self) -> str:
         if not self.enabled:

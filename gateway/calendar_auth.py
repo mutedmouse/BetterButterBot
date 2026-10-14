@@ -22,6 +22,7 @@ import os
 import secrets
 import socket
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -118,7 +119,9 @@ def main():
     out.write_text(json.dumps({"client_id": client["client_id"], "client_secret": client.get("client_secret", ""),
                                "refresh_token": tok["refresh_token"], "token_uri": TOKEN_URI,
                                # what Google actually granted (the user can untick boxes)
-                               "scope": tok.get("scope", scope)}, indent=2))
+                               "scope": tok.get("scope", scope),
+                               # when this sign-in happened: the gateway warns before a 7-day "Testing" token runs out
+                               "issued_at": int(time.time())}, indent=2))
     if write and WRITE_SCOPE not in tok.get("scope", "").split():
         print("\nNote: edit access was not granted (box unticked?), so this token is read-only.")
     if os.name == "posix":

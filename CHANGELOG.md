@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.3 (2026-10-13)
+
+Gateway and documentation only: the robot firmware is unchanged from v1.0.2, so there is nothing to flash.
+
+### Calendar
+- **ButterBot warns you before the Google sign-in runs out.** A day ahead it says *"Heads up: my Google Calendar sign-in runs out tomorrow at …"*, and once it has run out it says so once a day.
+  - Warnings come at most once a day, between 9 AM and 9 PM, and wait for the robot to be connected.
+  - Sign-ins now record when they happened. Older tokens fall back to the date the file was saved.
+  - Set `calendar.token_days: 0` if your Google app is published (no 7-day limit).
+- **Fixed: `calendar_reauth.ps1` failing with "No Python at …"** when the gateway's virtual environment can't start, for example after the Python it was built from moved. The sign-in only needs the standard library, so the script now falls back to any Python on PATH.
+- **The calendar guide is rebuilt around making your own Google Cloud project** (step-by-step, with a sign-in troubleshooting table). iCal links are now the read-only alternative, with per-service steps and how to check and reset a link. A new section covers several calendars and people.
+
+### Make your own instance
+- **This repository publishes source code only.** The README and install guide now start with making your own copy: fork it or download it. The gateway image is built from your copy, and your keys, calendar app and portal accounts stay yours.
+- **Docker:** the default is building the image from your copy (`docker compose --profile cpu up -d --build`). The deploy bundle runs an image you built and pushed to **your own** registry, or moved as a file. There is no project registry to pull from.
+
 ## v1.0.2 (2026-10-12)
 
 **Now with explorer mode!** Take your ButterBot on a journey, from your couch. Both the robot firmware and the gateway changed: flash the app (the storage image is unchanged).

@@ -1,5 +1,5 @@
 # ButterBot voice gateway - NVIDIA GPU image (linux/amd64; CUDA 12 + cuDNN 9, as CTranslate2 4.x needs).
-#   Prebuilt:  docker pull ghcr.io/<owner>/bb-voice-gateway:gpu        (see docker/README.md)
+#   To move it elsewhere: docker build -t ghcr.io/<your-account>/bb-voice-gateway:gpu -f Dockerfile.gpu . && docker push ...
 #   From here: docker compose --profile gpu up -d --build
 # Needs the NVIDIA driver on the host and the NVIDIA Container Toolkit (Linux) or Docker Desktop
 # with WSL2 GPU support (Windows).
